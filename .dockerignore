@@ -32,12 +32,6 @@ env/
 # Claude
 .claude/
 
-# Documentation and reports
-README.md
-REPORT.md
-IMPROVEMENTS.md
-*.md
-
 # Test files
 tests/
 
