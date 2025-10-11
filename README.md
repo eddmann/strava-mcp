@@ -1,3 +1,5 @@
+<img src="logo.png" width="300">
+
 # Strava MCP Server
 
 A Model Context Protocol (MCP) server for Strava integration. Access your activities, athlete stats, segments, and routes through Claude and other LLMs.
@@ -9,27 +11,66 @@ A Model Context Protocol (MCP) server for Strava integration. Access your activi
 
 This MCP server provides 18 tools to interact with your Strava account, organised into 4 categories:
 
-- **Activities** (5 tools) - List, filter, and analyse your Strava activities
-- **Athlete** (3 tools) - Access profile, statistics, and training zones
-- **Segments** (6 tools) - Explore and track segment efforts
-- **Routes** (4 tools) - Manage and export routes
+- Activities (5 tools) - List, filter, and analyse your Strava activities
+- Athlete (3 tools) - Access profile, statistics, and training zones
+- Segments (6 tools) - Explore and track segment efforts
+- Routes (4 tools) - Manage and export routes
 
-## Setup
-
-### Prerequisites
+## Prerequisites
 
 - Python 3.11+ and [uv](https://github.com/astral-sh/uv), OR
 - Docker
+
+## Strava API Application Setup
+
+Before installation, you need to create a Strava API application:
+
+1. Go to https://www.strava.com/settings/api
+2. Create a new application with the following settings:
+   - Application Name: Your choice (e.g., "My Strava MCP")
+   - Category: Your choice (e.g., "Data Importer")
+   - Club: Leave blank (optional)
+   - Website: Can be anything (e.g., `http://localhost`)
+   - **Authorization Callback Domain: Must be `localhost`**
+3. After creation, note your Client ID and Client Secret
+4. You'll use these credentials during the setup process below
+
+## Installation & Setup
+
+### How Authentication Works
+
+1. OAuth Flow - Authorise the app through your browser
+2. Token Storage - OAuth tokens saved to `.env` file
+3. Auto-Refresh - Tokens automatically refreshed when expired
+4. Persistence - Subsequent runs reuse stored tokens
 
 ### Option 1: Using UV
 
 ```bash
 # Install dependencies
-cd my-strava-mcp
+cd strava-mcp
 uv sync
+```
 
-# Configure credentials
+Then configure credentials using one of these methods:
+
+#### Interactive Setup
+
+```bash
 uv run strava-mcp-auth
+```
+
+This will open your browser to authorise the application and save credentials to `.env`.
+
+#### Manual Setup
+
+Create a `.env` file manually:
+
+```bash
+STRAVA_CLIENT_ID=your_client_id
+STRAVA_CLIENT_SECRET=your_client_secret
+STRAVA_ACCESS_TOKEN=your_access_token
+STRAVA_REFRESH_TOKEN=your_refresh_token
 ```
 
 ### Option 2: Using Docker
@@ -39,34 +80,28 @@ uv run strava-mcp-auth
 docker pull eddmann/strava-mcp:latest
 ```
 
-## Authentication
+Then configure credentials using one of these methods:
 
-### How It Works
-
-1. **Create API App**: Register an application at https://www.strava.com/settings/api
-2. **OAuth Flow**: Authorise the app through your browser
-3. **Token Storage**: OAuth tokens saved to `.env` file
-4. **Auto-Refresh**: Tokens automatically refreshed when expired
-5. **Persistence**: Subsequent runs reuse stored tokens
-
-### Configure Credentials
-
-Run interactive setup:
+#### Interactive Setup
 
 ```bash
-uv run strava-mcp-auth
+docker run -it --rm \
+  -v "$(pwd):/app" \
+  -w /app \
+  --entrypoint python \
+  eddmann/strava-mcp:latest \
+  -m strava_mcp.scripts.setup_auth
 ```
 
-Or create `.env` file manually:
+This will open your browser to authorise the application and save credentials to `.env`.
 
-```bash
-STRAVA_CLIENT_ID=your_client_id
-STRAVA_CLIENT_SECRET=your_client_secret
-STRAVA_ACCESS_TOKEN=your_access_token
-STRAVA_REFRESH_TOKEN=your_refresh_token
-```
+#### Manual Setup
 
-**Required OAuth Scopes:**
+Create a `.env` file manually in your current directory (see UV manual setup above for format).
+
+### Required OAuth Scopes
+
+The authentication process requests these scopes:
 
 - `profile:read_all` - Read athlete profile and zones
 - `activity:read_all` - Read all activity data
@@ -77,8 +112,8 @@ STRAVA_REFRESH_TOKEN=your_refresh_token
 
 Add to your configuration file:
 
-**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ### Using UV
 
@@ -90,7 +125,7 @@ Add to your configuration file:
       "args": [
         "run",
         "--directory",
-        "/ABSOLUTE/PATH/TO/my-strava-mcp",
+        "/ABSOLUTE/PATH/TO/strava-mcp",
         "strava-mcp"
       ]
     }
@@ -110,7 +145,7 @@ Add to your configuration file:
         "-i",
         "--rm",
         "-v",
-        "/ABSOLUTE/PATH/TO/my-strava-mcp/.env:/app/.env",
+        "/ABSOLUTE/PATH/TO/strava-mcp/.env:/app/.env",
         "eddmann/strava-mcp:latest"
       ]
     }
