@@ -10,6 +10,9 @@ WORKDIR /app
 # Copy dependency files and README (needed for package metadata)
 COPY pyproject.toml uv.lock* README.md ./
 
+# Copy source code (needed for building the package)
+COPY src/ ./src/
+
 # Install dependencies into a virtual environment
 RUN uv sync --frozen --no-dev
 
