@@ -3,6 +3,7 @@ name = "strava-mcp"
 version = "1.0.0"
 description = "Model Context Protocol server for Strava API integration"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "mcp[cli]>=1.17.0",
