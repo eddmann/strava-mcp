@@ -29,7 +29,10 @@ async def query_activities(
     ] = None,
     include_laps: Annotated[bool, "Include lap data"] = False,
     include_zones: Annotated[bool, "Include heart rate and power zones"] = False,
-    limit: Annotated[int, "Maximum number of activities to return (1-200)"] = 30,
+    limit: Annotated[
+        int,
+        "Maximum number of activities to return (1-4000). For large time ranges like 'ytd', use higher limits (e.g., 500-1000)",
+    ] = 30,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
 ) -> str:
     """Query Strava activities with optional enrichment.
@@ -38,6 +41,10 @@ async def query_activities(
     - Get a single activity by ID with optional enrichment
     - List activities within a time range with filtering
     - Include streams, laps, and zones in a single call
+
+    Note: For large time ranges (e.g., 'ytd', '90d'), increase the limit parameter
+    to ensure all activities are fetched. The default limit of 30 may only return
+    the most recent activities. Recommend using limit=500-1000 for year-to-date queries.
 
     Returns: JSON string with structure:
     {
@@ -72,9 +79,9 @@ async def query_activities(
         )
 
     # Validate limit
-    if limit < 1 or limit > 200:
+    if limit < 1 or limit > 4000:
         return ResponseBuilder.build_error_response(
-            f"Invalid limit: {limit}. Must be between 1 and 200.",
+            f"Invalid limit: {limit}. Must be between 1 and 4000.",
             error_type="validation_error",
         )
 
@@ -193,13 +200,23 @@ async def _list_activities(
     # Parse time range
     start, end = parse_time_range(time_range)
 
+    # For large time ranges (>60 days), use larger per_page to reduce API calls
+    # and increase max_api_calls to ensure we get all activities within the range
+    days_span = (end - start).days
+    if days_span > 60:
+        per_page = 200  # Max allowed by Strava API
+        max_api_calls = 20  # Allow more API calls for large ranges
+    else:
+        per_page = min(limit, 200)
+        max_api_calls = 10
+
     # Get activities
     activities = await client.get_all_activities(
         after=start,
         before=end,
-        per_page=min(limit, 200),
+        per_page=per_page,
         max_activities=limit,
-        max_api_calls=10,
+        max_api_calls=max_api_calls,
     )
 
     # Filter by activity type if specified

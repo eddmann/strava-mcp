@@ -215,7 +215,7 @@ class TestQueryActivities:
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
-        result = await query_activities(limit=500)
+        result = await query_activities(limit=5000)
         data = json.loads(result)
 
         assert "error" in data
