@@ -32,6 +32,7 @@ class TestMCPResources:
         athlete_id = DETAILED_ATHLETE["id"]
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
         stub_api.stub_athlete_zones_endpoint(ATHLETE_ZONES)
+        stub_api.stub_athlete_stats_endpoint(athlete_id, ATHLETE_STATS)
 
         # Call the resource function
         result = await server.athlete_profile_resource()
@@ -41,10 +42,10 @@ class TestMCPResources:
         assert "data" in data
         assert "metadata" in data
 
-        # Should have profile and zones, but NOT stats
+        # Should have profile, zones, AND stats (complete context)
         assert "profile" in data["data"]
         assert "zones" in data["data"]
-        assert "statistics" not in data["data"]
+        assert "statistics" in data["data"]
 
         # Verify profile data
         profile = data["data"]["profile"]
@@ -55,75 +56,9 @@ class TestMCPResources:
         zones = data["data"]["zones"]
         assert "heart_rate" in zones
 
-    @patch("strava_mcp.tools.athlete.load_config")
-    @patch("strava_mcp.tools.athlete.validate_credentials")
-    async def test_athlete_stats_resource(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
-        """Test athlete stats resource."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        athlete_id = DETAILED_ATHLETE["id"]
-        stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
-        stub_api.stub_athlete_stats_endpoint(athlete_id, ATHLETE_STATS)
-
-        # Call the resource function
-        result = await server.athlete_stats_resource()
-        data = json.loads(result)
-
-        # Verify structure
-        assert "data" in data
-        assert "metadata" in data
-
-        # Should have profile and stats, but NOT zones
-        assert "profile" in data["data"]
-        assert "statistics" in data["data"]
-        assert "zones" not in data["data"]
-
-        # Verify stats data
+        # Verify stats data (should have recent stats)
         stats = data["data"]["statistics"]
         assert "recent" in stats
-        assert "ytd" in stats
-        assert "all_time" in stats
-
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_recent_activities_resource(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
-        """Test recent activities resource."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        # Create a list of 20 activities
-        activities = [SUMMARY_ACTIVITY] * 20
-
-        stub_api.stub_activities_endpoint(activities)
-
-        # Call the resource function
-        result = await server.recent_activities_resource()
-        data = json.loads(result)
-
-        # Verify structure
-        assert "data" in data
-        assert "metadata" in data
-
-        # Should have activities list
-        assert "activities" in data["data"]
-        activities_list = data["data"]["activities"]
-
-        # Should have exactly 20 activities
-        assert len(activities_list) == 20
-
-        # Verify it's summary data (not detailed)
-        assert data["metadata"]["query_type"] == "activity_list"
-
-        # Check first activity structure
-        first_activity = activities_list[0]
-        assert "id" in first_activity
-        assert "name" in first_activity
-        assert "distance" in first_activity
 
 
 class TestMCPPrompts:
