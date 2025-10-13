@@ -3,7 +3,7 @@
 This module provides segment query tools with structured JSON output.
 """
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from ..auth import load_config, validate_credentials
 from ..client import StravaAPIError, StravaClient
@@ -163,7 +163,7 @@ async def _get_single_segment(
     # Athlete stats
     if segment.athlete_segment_stats:
         stats = segment.athlete_segment_stats
-        segment_data["athlete_stats"] = {
+        segment_data["athlete_stats"] = {  # type: ignore[assignment]
             "pr_elapsed_time": {
                 "seconds": stats.pr_elapsed_time,
                 "formatted": f"{stats.pr_elapsed_time // 60}:{stats.pr_elapsed_time % 60:02d}",
@@ -174,12 +174,12 @@ async def _get_single_segment(
             "effort_count": stats.effort_count,
         }
 
-    data = {"segment": segment_data}
+    data: dict[str, Any] = {"segment": segment_data}
 
     # Add efforts if requested
     if include_efforts:
         efforts = await client.list_segment_efforts(segment_id=segment_id)
-        data["efforts"] = [
+        data["efforts"] = [  # type: ignore[assignment]
             {
                 "id": effort.id,
                 "name": effort.name,
@@ -193,13 +193,13 @@ async def _get_single_segment(
             for effort in efforts[:limit]
         ]
 
-    metadata = {
+    metadata: dict[str, Any] = {
         "query_type": "single_segment",
         "segment_id": segment_id,
     }
 
     if include_efforts:
-        metadata["includes"] = ["efforts"]
+        metadata["includes"] = ["efforts"]  # type: ignore[assignment]
 
     return ResponseBuilder.build_response(data, metadata=metadata)
 

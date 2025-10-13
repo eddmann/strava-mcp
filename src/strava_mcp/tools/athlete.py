@@ -3,7 +3,7 @@
 This module provides athlete profile tools with structured JSON output.
 """
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from ..auth import load_config, validate_credentials
 from ..client import StravaAPIError, StravaClient
@@ -93,7 +93,7 @@ async def get_athlete_profile(
 
             # Weight
             if athlete.weight:
-                profile_data["weight"] = {
+                profile_data["weight"] = {  # type: ignore[assignment]
                     "kg": athlete.weight,
                     "formatted": f"{athlete.weight} kg"
                     if unit == "meters"
@@ -102,7 +102,7 @@ async def get_athlete_profile(
 
             # FTP
             if athlete.ftp:
-                profile_data["ftp"] = {"watts": athlete.ftp}
+                profile_data["ftp"] = {"watts": athlete.ftp}  # type: ignore[assignment]
 
             # Measurement preference
             profile_data["measurement_preference"] = athlete.measurement_preference
@@ -113,16 +113,16 @@ async def get_athlete_profile(
 
             # Bikes
             if athlete.bikes:
-                profile_data["bikes"] = [
+                profile_data["bikes"] = [  # type: ignore[assignment]
                     {
                         "id": bike.id,
                         "name": bike.name,
                         "primary": bike.primary,
                         "distance": {
-                            "meters": bike.distance,
-                            "formatted": f"{bike.distance / 1000:.1f} km"
+                            "meters": bike.distance if bike.distance else 0,
+                            "formatted": f"{(bike.distance if bike.distance else 0) / 1000:.1f} km"
                             if unit == "meters"
-                            else f"{bike.distance * 0.000621371:.1f} mi",
+                            else f"{(bike.distance if bike.distance else 0) * 0.000621371:.1f} mi",
                         },
                     }
                     for bike in athlete.bikes
@@ -130,23 +130,23 @@ async def get_athlete_profile(
 
             # Shoes
             if athlete.shoes:
-                profile_data["shoes"] = [
+                profile_data["shoes"] = [  # type: ignore[assignment]
                     {
                         "id": shoe.id,
                         "name": shoe.name,
                         "primary": shoe.primary,
                         "distance": {
-                            "meters": shoe.distance,
-                            "formatted": f"{shoe.distance / 1000:.1f} km"
+                            "meters": shoe.distance if shoe.distance else 0,
+                            "formatted": f"{(shoe.distance if shoe.distance else 0) / 1000:.1f} km"
                             if unit == "meters"
-                            else f"{shoe.distance * 0.000621371:.1f} mi",
+                            else f"{(shoe.distance if shoe.distance else 0) * 0.000621371:.1f} mi",
                         },
                     }
                     for shoe in athlete.shoes
                 ]
 
-            data = {"profile": profile_data}
-            metadata = {"includes": []}
+            data: dict[str, Any] = {"profile": profile_data}
+            metadata: dict[str, list[str]] = {"includes": []}
 
             # Add statistics if requested
             if include_stats:
@@ -337,7 +337,7 @@ async def get_athlete_profile(
                         },
                     }
 
-                data["statistics"] = statistics
+                data["statistics"] = statistics  # type: ignore[assignment]
                 metadata["includes"].append(f"stats:{stats_period}")
 
             # Add zones if requested
@@ -345,7 +345,7 @@ async def get_athlete_profile(
                 zones = await client.get_athlete_zones()
 
                 zones_data = ResponseBuilder.format_zones(zones.model_dump())
-                data["zones"] = zones_data
+                data["zones"] = zones_data  # type: ignore[assignment]
                 metadata["includes"].append("zones")
 
             return ResponseBuilder.build_response(data, metadata=metadata)

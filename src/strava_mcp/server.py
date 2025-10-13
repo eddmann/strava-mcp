@@ -45,7 +45,7 @@ async def athlete_profile_resource() -> str:
     result = await get_athlete_profile(
         include_stats=True,
         include_zones=True,
-        stats_period="recent"  # Recent stats to keep context window manageable
+        stats_period="recent",  # Recent stats to keep context window manageable
     )
     return result
 

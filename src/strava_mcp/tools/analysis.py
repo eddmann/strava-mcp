@@ -6,7 +6,7 @@ into actionable insights.
 
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Any, Annotated
+from typing import Annotated, Any
 
 from ..auth import load_config, validate_credentials
 from ..client import StravaAPIError, StravaClient
@@ -152,7 +152,9 @@ async def analyze_training(
             ]
 
             # Weekly breakdown
-            weekly_data: defaultdict[str, dict[str, int | float]] = defaultdict(lambda: {"count": 0, "distance": 0.0, "time": 0})
+            weekly_data: defaultdict[str, dict[str, int | float]] = defaultdict(
+                lambda: {"count": 0, "distance": 0.0, "time": 0}
+            )
             for activity in activities:
                 # Get week start (Monday)
                 # activity.start_date_local is already a datetime object from Pydantic model
@@ -264,7 +266,9 @@ async def analyze_training(
             if activity_type:
                 metadata["activity_type"] = activity_type
 
-            return ResponseBuilder.build_response(response_data, analysis=analysis, metadata=metadata)
+            return ResponseBuilder.build_response(
+                response_data, analysis=analysis, metadata=metadata
+            )
 
     except ValueError as e:
         return ResponseBuilder.build_error_response(
@@ -364,7 +368,9 @@ async def compare_activities(
 
             # Distance comparison
             if all("distance" in a for a in formatted_activities):
-                distances: list[tuple[Any, Any]] = [(a["id"], a["distance"]["meters"]) for a in formatted_activities]
+                distances: list[tuple[Any, Any]] = [
+                    (a["id"], a["distance"]["meters"]) for a in formatted_activities
+                ]
                 longest: tuple[Any, Any] = max(distances, key=lambda x: x[1])
                 shortest: tuple[Any, Any] = min(distances, key=lambda x: x[1])
                 comparison["distance"] = {
@@ -422,7 +428,7 @@ async def compare_activities(
             }
 
             # Generate insights
-            insights = []
+            insights: list[str] = []
 
             # Check if activities are same type
             types = set(a["type"] for a in formatted_activities)
@@ -431,7 +437,7 @@ async def compare_activities(
             else:
                 insights.append(f"Comparing different activity types: {', '.join(types)}")
 
-            analysis = {"insights": insights}
+            analysis: dict[str, list[str]] = {"insights": insights}
 
             return ResponseBuilder.build_response(
                 data, analysis=analysis, metadata={"activity_ids": ids}
@@ -528,10 +534,12 @@ async def find_similar_activities(
             activities = [a for a in activities if a.id != activity_id]
 
             # Calculate similarity scores
-            scored_activities = []
+            from ..models import SummaryActivity
+
+            scored_activities: list[tuple[SummaryActivity, float]] = []
             for activity in activities:
-                score = 0
-                max_score = 0
+                score = 0.0
+                max_score = 0.0
 
                 # Type similarity
                 if "type" in criteria_list:
@@ -584,13 +592,13 @@ async def find_similar_activities(
 
             # Sort by similarity score
             scored_activities.sort(key=lambda x: x[1], reverse=True)
-            scored_activities = scored_activities[:limit]
+            top_activities = scored_activities[:limit]
 
             # Format results
             reference_formatted = ResponseBuilder.format_activity(reference.model_dump(), unit)
 
-            similar = []
-            for activity, score in scored_activities:
+            similar: list[dict[str, Any]] = []
+            for activity, score in top_activities:
                 activity_formatted = ResponseBuilder.format_activity(activity.model_dump(), unit)
 
                 # Calculate differences

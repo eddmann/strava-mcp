@@ -3,7 +3,7 @@
 This module provides activity query tools with structured JSON output.
 """
 
-from typing import Any, Annotated
+from typing import Annotated, Any
 
 from ..auth import load_config, validate_credentials
 from ..client import StravaAPIError, StravaClient
@@ -149,7 +149,7 @@ async def _get_single_activity(
         streams = await client.get_activity_streams(activity_id, stream_types)
 
         # streams is a dict keyed by stream type when key_by_type=True (default)
-        data["streams"] = streams
+        data["streams"] = streams  # type: ignore[assignment]
 
     # Add laps if requested
     if include_laps:
@@ -308,7 +308,9 @@ async def get_activity_social(
                         "id": comment.id,
                         "athlete": {
                             "id": comment.athlete.id if comment.athlete else None,
-                            "name": f"{comment.athlete.firstname} {comment.athlete.lastname}" if comment.athlete else None,
+                            "name": f"{comment.athlete.firstname} {comment.athlete.lastname}"
+                            if comment.athlete
+                            else None,
                         },
                         "text": comment.text,
                         "created_at": comment.created_at,

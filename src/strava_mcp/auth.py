@@ -6,7 +6,7 @@ from typing import Literal
 
 import httpx
 from dotenv import load_dotenv, set_key
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .models import TokenResponse
 
@@ -14,17 +14,18 @@ from .models import TokenResponse
 class StravaConfig(BaseSettings):
     """Strava API configuration from environment variables."""
 
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+
     strava_client_id: str = ""
     strava_client_secret: str = ""
     strava_access_token: str = ""
     strava_refresh_token: str = ""
     strava_measurement_preference: Literal["meters", "feet"] = "meters"
     route_export_path: str = "./exports"
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
 
 
 def load_config() -> StravaConfig:
