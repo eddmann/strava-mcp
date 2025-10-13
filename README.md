@@ -89,8 +89,13 @@ Then configure credentials using one of these methods:
 #### Interactive Setup
 
 ```bash
+# Create the env file first (Docker will create it as a directory if it doesn't exist)
+touch strava-mcp.env
+
+# Run the setup script
 docker run -it --rm \
   -v "/ABSOLUTE/PATH/TO/strava-mcp.env:/app/.env" \
+  --entrypoint= \
   ghcr.io/eddmann/strava-mcp:latest \
   python -m strava_mcp.scripts.setup_auth
 ```
@@ -183,7 +188,7 @@ Use built-in prompt templates for common queries (available via prompt suggestio
 "Show my athlete profile with year-to-date stats and training zones"
 ```
 
-*Note: The athlete profile resource (`strava://athlete/profile`) automatically provides ongoing context.*
+_Note: The athlete profile resource (`strava://athlete/profile`) automatically provides ongoing context._
 
 ### Segments
 
@@ -250,21 +255,21 @@ Use built-in prompt templates for common queries (available via prompt suggestio
 
 Resources provide ongoing context to the LLM without requiring explicit tool calls:
 
-| Resource                     | Description                                                 |
-| ---------------------------- | ----------------------------------------------------------- |
-| `strava://athlete/profile`   | Complete athlete profile with recent stats, zones, and gear |
+| Resource                   | Description                                                 |
+| -------------------------- | ----------------------------------------------------------- |
+| `strava://athlete/profile` | Complete athlete profile with recent stats, zones, and gear |
 
 ## MCP Prompts
 
 Prompt templates for common queries (accessible via prompt suggestion in Claude):
 
-| Prompt                    | Description                                              |
-| ------------------------- | -------------------------------------------------------- |
-| `analyze-recent-training` | Comprehensive training analysis over a specified period  |
-| `segment-performance`     | Detailed segment performance analysis                    |
-| `activity-deep-dive`      | Deep dive into a specific activity with all metrics      |
-| `compare-recent-runs`     | Compare recent runs to identify trends and improvements  |
-| `training-summary`        | Comprehensive training overview with recommendations     |
+| Prompt                    | Description                                             |
+| ------------------------- | ------------------------------------------------------- |
+| `analyze-recent-training` | Comprehensive training analysis over a specified period |
+| `segment-performance`     | Detailed segment performance analysis                   |
+| `activity-deep-dive`      | Deep dive into a specific activity with all metrics     |
+| `compare-recent-runs`     | Compare recent runs to identify trends and improvements |
+| `training-summary`        | Comprehensive training overview with recommendations    |
 
 ## License
 
