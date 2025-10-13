@@ -77,7 +77,7 @@ STRAVA_REFRESH_TOKEN=your_refresh_token
 
 ```bash
 # Pull the image
-docker pull eddmann/strava-mcp:latest
+docker pull ghcr.io/eddmann/strava-mcp:latest
 ```
 
 Then configure credentials using one of these methods:
@@ -89,7 +89,7 @@ docker run -it --rm \
   -v "$(pwd):/app" \
   -w /app \
   --entrypoint python \
-  eddmann/strava-mcp:latest \
+  ghcr.io/eddmann/strava-mcp:latest \
   -m strava_mcp.scripts.setup_auth
 ```
 
@@ -146,7 +146,7 @@ Add to your configuration file:
         "--rm",
         "-v",
         "/ABSOLUTE/PATH/TO/strava-mcp/.env:/app/.env",
-        "eddmann/strava-mcp:latest"
+        "ghcr.io/eddmann/strava-mcp:latest"
       ]
     }
   }
