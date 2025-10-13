@@ -1,19 +1,11 @@
 """Comprehensive tests for activity tools."""
 
+import json
 from unittest.mock import patch
 
 import pytest
 
-from strava_mcp.tools.activities import (
-    get_activity_comments,
-    get_activity_details,
-    get_activity_kudoers,
-    get_activity_laps,
-    get_activity_streams,
-    get_activity_zones,
-    get_all_activities,
-    get_recent_activities,
-)
+from strava_mcp.tools.activities import get_activity_social, query_activities
 from tests.fixtures.activity_fixtures import (
     ACTIVITY_COMMENTS,
     ACTIVITY_KUDOERS,
@@ -25,6 +17,10 @@ from tests.fixtures.activity_fixtures import (
 )
 from tests.stubs.strava_api_stub import StravaAPIStubber
 
+# Constants for test IDs
+DETAILED_ACTIVITY_ID = DETAILED_ACTIVITY["id"]  # 12345678987654320
+SUMMARY_ACTIVITY_ID = SUMMARY_ACTIVITY["id"]  # 154504250376823
+
 
 @pytest.fixture
 def stub_api(respx_mock):
@@ -32,574 +28,275 @@ def stub_api(respx_mock):
     return StravaAPIStubber(respx_mock)
 
 
-class TestGetRecentActivities:
-    """Test get_recent_activities tool."""
+class TestQueryActivities:
+    """Test query_activities tool."""
 
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_recent_activities_success(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test successful recent activities retrieval."""
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_query_activities_list_recent(
+        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
+    ):
+        """Test querying recent activities list."""
+        from httpx import Response
+
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
         activities = [SUMMARY_ACTIVITY]
-        stub_api.stub_activities_endpoint(activities)
+        # Stub paginated responses - return activities for page 1, empty for subsequent pages
 
-        result = await get_recent_activities()
+        def activities_response(request):
+            page = request.url.params.get("page", "1")
+            if page == "1":
+                return Response(200, json=activities)
+            return Response(200, json=[])
 
-        assert "Found 1 recent activities:" in result
-        assert "Happy Friday" in result
-        assert "ID: 154504250376823" in result
-        assert "Type: Ride" in result
-        assert "24.93 km" in result  # distance formatted
+        respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
 
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_recent_activities_with_pagination(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test recent activities with pagination parameters."""
+        result = await query_activities(time_range="recent")
+        data = json.loads(result)
+
+        assert "data" in data
+        assert "activities" in data["data"]
+        assert len(data["data"]["activities"]) == 1
+        assert data["data"]["activities"][0]["id"] == SUMMARY_ACTIVITY_ID
+        assert data["data"]["activities"][0]["name"] == "Happy Friday"
+        assert "distance" in data["data"]["activities"][0]
+        assert data["data"]["activities"][0]["distance"]["meters"] == 24931.4
+        assert "24.93 km" in data["data"]["activities"][0]["distance"]["formatted"]
+
+        # Check aggregated metrics
+        assert "aggregated" in data["data"]
+        assert data["data"]["aggregated"]["count"] == 1
+
+        # Check metadata
+        assert "metadata" in data
+        assert data["metadata"]["query_type"] == "activity_list"
+        assert "time_range" in data["metadata"]
+
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_query_activities_single_by_id(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test querying single activity by ID."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
-        activities = [SUMMARY_ACTIVITY, {**SUMMARY_ACTIVITY, "id": 2, "name": "Morning Ride"}]
-        stub_api.stub_activities_endpoint(activities, page=2, per_page=10)
+        stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
 
-        result = await get_recent_activities(page=2, per_page=10)
+        result = await query_activities(activity_id=DETAILED_ACTIVITY_ID)
+        data = json.loads(result)
 
-        assert "Found 2 recent activities:" in result
+        assert "data" in data
+        assert "activity" in data["data"]
+        assert data["data"]["activity"]["id"] == DETAILED_ACTIVITY_ID
+        assert data["data"]["activity"]["name"] == "Happy Friday"
 
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_recent_activities_empty(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test recent activities with no results."""
+        # Check both raw and formatted values
+        assert "distance" in data["data"]["activity"]
+        assert "meters" in data["data"]["activity"]["distance"]
+        assert "formatted" in data["data"]["activity"]["distance"]
+
+        # Check metadata
+        assert "metadata" in data
+        assert data["metadata"]["query_type"] == "single_activity"
+        assert data["metadata"]["activity_id"] == DETAILED_ACTIVITY_ID
+
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_query_activities_with_laps(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test querying activity with laps included."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
+        stub_api.stub_activity_laps_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_LAPS)
+
+        result = await query_activities(activity_id=DETAILED_ACTIVITY_ID, include_laps=True)
+        data = json.loads(result)
+
+        # Debug: print result if there's an error
+        if "error" in data:
+            print(f"Error in response: {data['error']}")
+
+        assert "data" in data, f"Expected 'data' key, got: {data.keys()}"
+        assert "laps" in data["data"]
+        assert len(data["data"]["laps"]) > 0
+        assert "lap_number" in data["data"]["laps"][0]
+        assert "includes" in data["metadata"]
+        assert "laps" in data["metadata"]["includes"]
+
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_query_activities_with_zones(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test querying activity with zones included."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
+        stub_api.stub_activity_zones_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_ZONES)
+
+        result = await query_activities(activity_id=DETAILED_ACTIVITY_ID, include_zones=True)
+        data = json.loads(result)
+
+        assert "zones" in data["data"]
+        assert "includes" in data["metadata"]
+        assert "zones" in data["metadata"]["includes"]
+
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_query_activities_with_streams(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test querying activity with streams included."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
+        stub_api.stub_activity_streams_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_STREAMS)
+
+        result = await query_activities(
+            activity_id=DETAILED_ACTIVITY_ID, include_streams="time,heartrate,watts"
+        )
+        data = json.loads(result)
+
+        # Debug: print result if there's an error
+        if "error" in data:
+            print(f"Error in response: {data['error']}")
+
+        assert "data" in data, f"Expected 'data' key, got: {data.keys()}"
+        assert "streams" in data["data"]
+        assert "includes" in data["metadata"]
+        assert any("streams:" in inc for inc in data["metadata"]["includes"])
+
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_query_activities_empty_result(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test querying activities with no results."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
         stub_api.stub_activities_endpoint([])
 
-        result = await get_recent_activities()
+        result = await query_activities(time_range="recent")
+        data = json.loads(result)
 
-        assert "No activities found." in result
+        assert data["data"]["activities"] == []
+        assert data["data"]["aggregated"]["count"] == 0
 
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_recent_activities_not_authenticated(self, mock_validate, mock_load_config, mock_config):
-        """Test recent activities when not authenticated."""
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_query_activities_not_authenticated(
+        self, mock_validate, mock_load_config, mock_config
+    ):
+        """Test querying activities when not authenticated."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = False
 
-        result = await get_recent_activities()
+        result = await query_activities()
+        data = json.loads(result)
 
-        assert "Error: Strava credentials not configured" in result
+        assert "error" in data
+        assert "authentication_required" in data["error"]["type"]
 
-
-class TestGetAllActivities:
-    """Test get_all_activities tool."""
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_all_activities_success(self, mock_validate, mock_load_config, mock_config, respx_mock):
-        """Test successful all activities retrieval."""
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_query_activities_invalid_limit(
+        self, mock_validate, mock_load_config, mock_config
+    ):
+        """Test querying activities with invalid limit."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
-        # Mock paginated responses
-        page_1 = [SUMMARY_ACTIVITY, {**SUMMARY_ACTIVITY, "id": 2, "name": "Activity 2"}]
-        page_2 = [{**SUMMARY_ACTIVITY, "id": 3, "name": "Activity 3"}]
-        page_3 = []  # Empty page to stop pagination
+        result = await query_activities(limit=500)
+        data = json.loads(result)
 
-        respx_mock.get("/athlete/activities", params={"per_page": 30, "page": 1}).mock(
-            return_value=pytest.importorskip("httpx").Response(200, json=page_1)
-        )
-        respx_mock.get("/athlete/activities", params={"per_page": 30, "page": 2}).mock(
-            return_value=pytest.importorskip("httpx").Response(200, json=page_2)
-        )
-        respx_mock.get("/athlete/activities", params={"per_page": 30, "page": 3}).mock(
-            return_value=pytest.importorskip("httpx").Response(200, json=page_3)
-        )
+        assert "error" in data
+        assert "validation_error" in data["error"]["type"]
 
-        result = await get_all_activities()
 
-        assert "Found 3 activities:" in result
-        assert "Happy Friday" in result
-        assert "Activity 2" in result
-        assert "Activity 3" in result
+class TestGetActivitySocial:
+    """Test get_activity_social tool."""
 
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_all_activities_with_type_filter(self, mock_validate, mock_load_config, mock_config, respx_mock):
-        """Test all activities with activity type filter."""
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_get_activity_social_with_comments_and_kudos(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test getting social data with comments and kudos."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
-        activities = [
-            {**SUMMARY_ACTIVITY, "id": 1, "type": "Ride", "sport_type": "Ride"},
-            {**SUMMARY_ACTIVITY, "id": 2, "type": "Run", "sport_type": "Run", "name": "Morning Run"},
-        ]
-        # Mock page 1 with activities, page 2 empty to stop pagination
-        respx_mock.get("/athlete/activities", params={"per_page": 30, "page": 1}).mock(
-            return_value=pytest.importorskip("httpx").Response(200, json=activities)
-        )
-        respx_mock.get("/athlete/activities", params={"per_page": 30, "page": 2}).mock(
-            return_value=pytest.importorskip("httpx").Response(200, json=[])
-        )
+        stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
+        stub_api.stub_activity_comments_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_COMMENTS)
+        stub_api.stub_activity_kudoers_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_KUDOERS)
 
-        result = await get_all_activities(activity_type="Run")
+        result = await get_activity_social(DETAILED_ACTIVITY_ID)
+        data = json.loads(result)
 
-        assert "Found 1 activities:" in result
-        assert "Morning Run" in result
-        assert "Happy Friday" not in result
+        assert "data" in data
+        assert "activity" in data["data"]
+        assert "comments" in data["data"]
+        assert "kudos" in data["data"]
 
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_all_activities_with_date_filters(self, mock_validate, mock_load_config, mock_config, respx_mock):
-        """Test all activities with date filters."""
+        assert data["data"]["activity"]["id"] == DETAILED_ACTIVITY_ID
+        assert len(data["data"]["comments"]) > 0
+        assert len(data["data"]["kudos"]) > 0
+
+        # Check comment structure
+        comment = data["data"]["comments"][0]
+        assert "id" in comment
+        assert "athlete" in comment
+        assert "text" in comment
+
+        # Check kudos structure
+        kudoer = data["data"]["kudos"][0]
+        assert "id" in kudoer
+        assert "name" in kudoer
+
+        # Check metadata
+        assert "metadata" in data
+        assert "includes" in data["metadata"]
+
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_get_activity_social_comments_only(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test getting only comments."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
-        activities = [SUMMARY_ACTIVITY]
-        # Mock page 1 with activities, page 2 empty to stop pagination
-        respx_mock.get("/athlete/activities", params={"per_page": 30, "page": 1}).mock(
-            return_value=pytest.importorskip("httpx").Response(200, json=activities)
-        )
-        respx_mock.get("/athlete/activities", params={"per_page": 30, "page": 2}).mock(
-            return_value=pytest.importorskip("httpx").Response(200, json=[])
-        )
+        stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
+        stub_api.stub_activity_comments_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_COMMENTS)
 
-        result = await get_all_activities(after="2018-01-01", before="2018-12-31")
+        result = await get_activity_social(DETAILED_ACTIVITY_ID, include_kudos=False)
+        data = json.loads(result)
 
-        assert "Found 1 activities:" in result
+        assert "comments" in data["data"]
+        assert "kudos" not in data["data"]
 
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_all_activities_invalid_date(self, mock_validate, mock_load_config, mock_config):
-        """Test all activities with invalid date format."""
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_get_activity_social_not_found(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test getting social data for non-existent activity."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
-        result = await get_all_activities(after="invalid-date")
+        stub_api.stub_error_response("/activities/999999", status_code=404)
 
-        assert "Error: Invalid date format" in result
+        result = await get_activity_social(999999)
+        data = json.loads(result)
 
-
-class TestGetActivityDetails:
-    """Test get_activity_details tool."""
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_details_success(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test successful activity details retrieval."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 12345678987654320
-        stub_api.stub_activity_details_endpoint(activity_id, DETAILED_ACTIVITY)
-
-        result = await get_activity_details(activity_id)
-
-        assert "Activity: Happy Friday" in result
-        assert f"ID: {activity_id}" in result
-        assert "Type: Ride" in result
-        assert "28.10 km" in result
-        assert "Distance & Time:" in result
-        assert "Speed:" in result
-        assert "Elevation:" in result
-        assert "Kudos: 19" in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_details_with_heartrate(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity details with heart rate data."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 123
-        activity_with_hr = {
-            **DETAILED_ACTIVITY,
-            "id": activity_id,
-            "has_heartrate": True,
-            "average_heartrate": 150.0,
-            "max_heartrate": 180
-        }
-        stub_api.stub_activity_details_endpoint(activity_id, activity_with_hr)
-
-        result = await get_activity_details(activity_id)
-
-        assert "Heart Rate:" in result
-        assert "Average: 150 bpm" in result
-        assert "Max: 180 bpm" in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_details_not_found(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity details with non-existent activity."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 999999
-        stub_api.stub_error_response(f"/activities/{activity_id}", status_code=404)
-
-        result = await get_activity_details(activity_id)
-
-        assert "Error:" in result
-
-
-class TestGetActivityStreams:
-    """Test get_activity_streams tool."""
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_streams_success(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test successful activity streams retrieval."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 123
-        stub_api.stub_activity_streams_endpoint(activity_id, ACTIVITY_STREAMS)
-
-        result = await get_activity_streams(activity_id)
-
-        assert f"Activity {activity_id} Streams:" in result
-        assert "TIME:" in result
-        assert "DISTANCE:" in result
-        assert "ALTITUDE:" in result
-        assert "VELOCITY_SMOOTH:" in result
-        assert "HEARTRATE:" in result
-        assert "WATTS:" in result
-        assert "Data points:" in result
-        assert "Normalized Power:" in result  # Special calculation for watts
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_streams_with_specific_types(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity streams with specific stream types."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 123
-        limited_streams = {
-            "heartrate": ACTIVITY_STREAMS["heartrate"],
-            "watts": ACTIVITY_STREAMS["watts"]
-        }
-        stub_api.stub_activity_streams_endpoint(activity_id, limited_streams)
-
-        result = await get_activity_streams(activity_id, streams="heartrate,watts")
-
-        assert "HEARTRATE:" in result
-        assert "WATTS:" in result
-        assert "DISTANCE:" not in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_streams_with_max_results(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity streams with max_results limit."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 123
-        stub_api.stub_activity_streams_endpoint(activity_id, ACTIVITY_STREAMS)
-
-        result = await get_activity_streams(activity_id, max_results=3)
-
-        # Should only show first 3 data points
-        assert "Data points: 3" in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_streams_empty(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity streams with no data."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 123
-        stub_api.stub_activity_streams_endpoint(activity_id, {})
-
-        result = await get_activity_streams(activity_id)
-
-        assert "No stream data available for this activity." in result
-
-
-class TestGetActivityLaps:
-    """Test get_activity_laps tool."""
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_laps_success(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test successful activity laps retrieval."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 12345678987654320
-        stub_api.stub_activity_laps_endpoint(activity_id, ACTIVITY_LAPS)
-
-        result = await get_activity_laps(activity_id)
-
-        assert f"Found {len(ACTIVITY_LAPS)} laps for activity {activity_id}:" in result
-        assert "Lap 1 - Lap 1" in result
-        assert "Lap 2 - Lap 2" in result
-        assert "8.05 km" in result  # First lap distance
-        assert "Avg Speed:" in result
-        assert "Avg Power:" in result
-        assert "Avg Cadence:" in result
-        assert "--- Raw Lap Data (JSON) ---" in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_laps_empty(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity laps with no laps."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 123
-        stub_api.stub_activity_laps_endpoint(activity_id, [])
-
-        result = await get_activity_laps(activity_id)
-
-        assert "No laps found for this activity." in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_laps_not_found(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity laps with non-existent activity."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 999999
-        stub_api.stub_error_response(f"/activities/{activity_id}/laps", status_code=404)
-
-        result = await get_activity_laps(activity_id)
-
-        assert "Error:" in result
-
-
-class TestGetActivityZones:
-    """Test get_activity_zones tool."""
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_zones_success(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test successful activity zones retrieval."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 12345678987654320
-        stub_api.stub_activity_zones_endpoint(activity_id, ACTIVITY_ZONES)
-
-        result = await get_activity_zones(activity_id)
-
-        assert f"Activity {activity_id} Zone Analysis:" in result
-        assert "=== HEART RATE ZONES ===" in result
-        assert "Sensor Based: Yes" in result
-        assert "Score: 82" in result
-        assert "Points: 100" in result
-        assert "Time in Zones:" in result
-        assert "Zone 1" in result
-        assert "=== POWER ZONES ===" in result
-        assert "Custom Zones: Yes" in result
-        assert "Score: 95" in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_zones_heartrate_only(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity zones with only heart rate data."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 123
-        hr_only_zones = [ACTIVITY_ZONES[0]]  # Only heart rate zone
-        stub_api.stub_activity_zones_endpoint(activity_id, hr_only_zones)
-
-        result = await get_activity_zones(activity_id)
-
-        assert "=== HEART RATE ZONES ===" in result
-        assert "=== POWER ZONES ===" not in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_zones_empty(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity zones with no data."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 123
-        stub_api.stub_activity_zones_endpoint(activity_id, [])
-
-        result = await get_activity_zones(activity_id)
-
-        assert "No zone data available for this activity." in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_zones_not_authenticated(self, mock_validate, mock_load_config, mock_config):
-        """Test activity zones when not authenticated."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = False
-
-        result = await get_activity_zones(123)
-
-        assert "Error: Strava credentials not configured" in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_zones_not_found(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity zones with non-existent activity."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 999999
-        stub_api.stub_error_response(f"/activities/{activity_id}/zones", status_code=404)
-
-        result = await get_activity_zones(activity_id)
-
-        assert "Error:" in result
-
-
-class TestGetActivityComments:
-    """Test get_activity_comments tool."""
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_comments_success(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test successful activity comments retrieval."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 12345678987654320
-        stub_api.stub_activity_comments_endpoint(activity_id, ACTIVITY_COMMENTS)
-
-        result = await get_activity_comments(activity_id)
-
-        assert f"Found {len(ACTIVITY_COMMENTS)} comments on activity {activity_id}:" in result
-        assert "John Doe" in result
-        assert "Jane Smith" in result
-        assert "Great ride! Weather looked perfect." in result
-        assert "Nice work out there!" in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_comments_with_pagination(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity comments with pagination parameters."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 12345678987654320
-        stub_api.stub_activity_comments_endpoint(activity_id, ACTIVITY_COMMENTS, page=2, per_page=10)
-
-        result = await get_activity_comments(activity_id, page=2, per_page=10)
-
-        assert f"Found {len(ACTIVITY_COMMENTS)} comments" in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_comments_empty(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity comments with no comments."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 123
-        stub_api.stub_activity_comments_endpoint(activity_id, [])
-
-        result = await get_activity_comments(activity_id)
-
-        assert f"No comments found for activity {activity_id}." in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_comments_not_authenticated(self, mock_validate, mock_load_config, mock_config):
-        """Test activity comments when not authenticated."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = False
-
-        result = await get_activity_comments(123)
-
-        assert "Error: Strava credentials not configured" in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_comments_not_found(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity comments with non-existent activity."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 999999
-        stub_api.stub_error_response(f"/activities/{activity_id}/comments", status_code=404)
-
-        result = await get_activity_comments(activity_id)
-
-        assert "Error:" in result
-
-
-class TestGetActivityKudoers:
-    """Test get_activity_kudoers tool."""
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_kudoers_success(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test successful activity kudoers retrieval."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 12345678987654320
-        stub_api.stub_activity_kudoers_endpoint(activity_id, ACTIVITY_KUDOERS)
-
-        result = await get_activity_kudoers(activity_id)
-
-        assert f"Found {len(ACTIVITY_KUDOERS)} kudos on activity {activity_id}:" in result
-        assert "Alice Johnson" in result
-        assert "Bob Williams" in result
-        assert "Charlie Brown" in result
-        assert "Berkeley, CA, United States" in result
-        assert "Palo Alto, CA, United States" in result
-        assert "Premium Member" in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_kudoers_with_pagination(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity kudoers with pagination parameters."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 12345678987654320
-        stub_api.stub_activity_kudoers_endpoint(activity_id, ACTIVITY_KUDOERS, page=2, per_page=10)
-
-        result = await get_activity_kudoers(activity_id, page=2, per_page=10)
-
-        assert f"Found {len(ACTIVITY_KUDOERS)} kudos" in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_kudoers_empty(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity kudoers with no kudos."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 123
-        stub_api.stub_activity_kudoers_endpoint(activity_id, [])
-
-        result = await get_activity_kudoers(activity_id)
-
-        assert f"No kudos found for activity {activity_id}." in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_kudoers_not_authenticated(self, mock_validate, mock_load_config, mock_config):
-        """Test activity kudoers when not authenticated."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = False
-
-        result = await get_activity_kudoers(123)
-
-        assert "Error: Strava credentials not configured" in result
-
-    @patch('strava_mcp.tools.activities.load_config')
-    @patch('strava_mcp.tools.activities.validate_credentials')
-    async def test_get_activity_kudoers_not_found(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test activity kudoers with non-existent activity."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        activity_id = 999999
-        stub_api.stub_error_response(f"/activities/{activity_id}/kudos", status_code=404)
-
-        result = await get_activity_kudoers(activity_id)
-
-        assert "Error:" in result
+        assert "error" in data
+        assert "not_found" in data["error"]["type"]
+        assert "suggestions" in data["error"]

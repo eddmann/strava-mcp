@@ -4,17 +4,14 @@ ROUTE = {
     "id": 987654,
     "name": "Morning Commute",
     "description": "My daily ride to work",
-    "athlete": {
-        "id": 123456,
-        "resource_state": 1
-    },
+    "athlete": {"id": 123456, "resource_state": 1},
     "distance": 15000.0,
     "elevation_gain": 150.0,
     "map": {
         "id": "r987654",
         "polyline": "abcdefgh...",
         "summary_polyline": "xyz123...",
-        "resource_state": 3
+        "resource_state": 3,
     },
     "type": 1,
     "sub_type": 1,
@@ -26,7 +23,7 @@ ROUTE = {
     "created_at": "2021-04-10T08:00:00.000Z",
     "updated_at": "2021-04-10T08:00:00.000Z",
     "id_str": "987654",
-    "resource_state": 3
+    "resource_state": 3,
 }
 
 ROUTE_LIST = [
@@ -34,48 +31,34 @@ ROUTE_LIST = [
         "id": 987654,
         "name": "Morning Commute",
         "description": "My daily ride to work",
-        "athlete": {
-            "id": 123456,
-            "resource_state": 1
-        },
+        "athlete": {"id": 123456, "resource_state": 1},
         "distance": 15000.0,
         "elevation_gain": 150.0,
-        "map": {
-            "id": "r987654",
-            "summary_polyline": "xyz123...",
-            "resource_state": 2
-        },
+        "map": {"id": "r987654", "summary_polyline": "xyz123...", "resource_state": 2},
         "type": 1,
         "sub_type": 1,
         "private": False,
         "starred": True,
         "estimated_moving_time": 2400,
         "created_at": "2021-04-10T08:00:00.000Z",
-        "resource_state": 2
+        "resource_state": 2,
     },
     {
         "id": 987655,
         "name": "Weekend Loop",
         "description": "Long weekend ride",
-        "athlete": {
-            "id": 123456,
-            "resource_state": 1
-        },
+        "athlete": {"id": 123456, "resource_state": 1},
         "distance": 50000.0,
         "elevation_gain": 800.0,
-        "map": {
-            "id": "r987655",
-            "summary_polyline": "abc456...",
-            "resource_state": 2
-        },
+        "map": {"id": "r987655", "summary_polyline": "abc456...", "resource_state": 2},
         "type": 1,
         "sub_type": 1,
         "private": True,
         "starred": False,
         "estimated_moving_time": 7200,
         "created_at": "2021-04-11T08:00:00.000Z",
-        "resource_state": 2
-    }
+        "resource_state": 2,
+    },
 ]
 
 GPX_DATA = """<?xml version="1.0" encoding="UTF-8"?>

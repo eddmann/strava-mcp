@@ -1,260 +1,273 @@
-"""Route-related tools for Strava MCP server."""
+"""Route-related tools for Strava MCP server.
 
-import os
-from pathlib import Path
-from typing import Annotated
+This module provides route query and export tools with structured JSON output.
+"""
+
+from typing import Annotated, Literal
 
 from ..auth import load_config, validate_credentials
 from ..client import StravaAPIError, StravaClient
-from ..formatters import format_distance, format_duration, format_elevation
+from ..models import MeasurementPreference
+from ..response_builder import ResponseBuilder
 
 
-async def list_athlete_routes(
-    athlete_id: Annotated[int | None, "Athlete ID (defaults to authenticated athlete)"] = None,
-    page: Annotated[int, "Page number (default: 1)"] = 1,
-    per_page: Annotated[int, "Number of routes per page (default: 30)"] = 30,
+async def query_routes(
+    route_id: Annotated[int | None, "Get specific route by ID"] = None,
+    limit: Annotated[int, "Maximum number of routes to return"] = 30,
+    unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
 ) -> str:
-    """List routes for an athlete."""
-    config = load_config()
+    """Query Strava routes.
 
-    if not validate_credentials(config):
-        return (
-            "Error: Strava credentials not configured. "
-            "Please run 'strava-mcp-auth' to set up authentication."
-        )
+    This unified tool can:
+    - Get a single route by ID
+    - List all routes for the authenticated athlete
 
-    try:
-        async with StravaClient(config) as client:
-            # Get athlete for measurement preference
-            athlete = await client.get_athlete()
-            unit = athlete.measurement_preference or "meters"
+    Returns: JSON string with structure:
+    {
+        "data": {
+            "route": {...}          // Single route mode
+            OR
+            "routes": [...],        // List mode
+            "count": N
+        },
+        "metadata": {
+            "fetched_at": "ISO timestamp",
+            "query_type": "single_route" | "list_routes"
+        }
+    }
 
-            routes = await client.list_athlete_routes(
-                athlete_id=athlete_id,
-                page=page,
-                per_page=per_page,
-            )
-
-            if not routes:
-                return "No routes found."
-
-            output = [f"Found {len(routes)} routes:\n"]
-
-            for route in routes:
-                output.append(f"• {route.name}")
-                output.append(f"  ID: {route.id}")
-
-                if route.description:
-                    output.append(f"  Description: {route.description}")
-
-                output.append(f"  Distance: {format_distance(route.distance, unit)}")
-                output.append(f"  Elevation Gain: {format_elevation(route.elevation_gain, unit)}")
-
-                if route.estimated_moving_time:
-                    output.append(f"  Est. Time: {format_duration(route.estimated_moving_time)}")
-
-                output.append(f"  Private: {'Yes' if route.private else 'No'}")
-                output.append(f"  Starred: {'Yes' if route.starred else 'No'}")
-
-                if route.created_at:
-                    output.append(f"  Created: {route.created_at.strftime('%Y-%m-%d')}")
-
-                output.append("")
-
-            return "\n".join(output)
-
-    except StravaAPIError as e:
-        return f"Error: {e.message}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"
-
-
-async def get_route(
-    route_id: Annotated[int, "The ID of the route"],
-) -> str:
-    """Get detailed information about a specific route."""
-    config = load_config()
-
-    if not validate_credentials(config):
-        return (
-            "Error: Strava credentials not configured. "
-            "Please run 'strava-mcp-auth' to set up authentication."
-        )
-
-    try:
-        async with StravaClient(config) as client:
-            # Get athlete for measurement preference
-            athlete = await client.get_athlete()
-            unit = athlete.measurement_preference or "meters"
-
-            route = await client.get_route(route_id)
-
-            output = [f"Route: {route.name}\n"]
-            output.append(f"ID: {route.id}")
-
-            if route.description:
-                output.append(f"Description: {route.description}")
-
-            output.append("")
-            output.append("Measurements:")
-            output.append(f"  Distance: {format_distance(route.distance, unit)}")
-            output.append(f"  Elevation Gain: {format_elevation(route.elevation_gain, unit)}")
-
-            if route.estimated_moving_time:
-                output.append(f"  Estimated Time: {format_duration(route.estimated_moving_time)}")
-
-            output.append("")
-            output.append("Properties:")
-            output.append(f"  Private: {'Yes' if route.private else 'No'}")
-            output.append(f"  Starred: {'Yes' if route.starred else 'No'}")
-
-            if route.created_at:
-                output.append(f"  Created: {route.created_at.strftime('%Y-%m-%d')}")
-
-            if route.updated_at:
-                output.append(f"  Updated: {route.updated_at.strftime('%Y-%m-%d')}")
-
-            if route.segments:
-                output.append(f"\nSegments: {len(route.segments)} segments included")
-
-            output.append(
-                f"\nTo export this route, use export-route-gpx or export-route-tcx with ID: {route.id}"
-            )
-
-            return "\n".join(output)
-
-    except StravaAPIError as e:
-        return f"Error: {e.message}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"
-
-
-def validate_export_path(export_path: str) -> tuple[bool, str]:
+    Examples:
+        - Get specific route: query_routes(route_id=12345)
+        - List all routes: query_routes()
     """
-    Validate the export path for route files.
+    config = load_config()
 
-    Returns:
-        Tuple of (is_valid, error_message)
+    if not validate_credentials(config):
+        return ResponseBuilder.build_error_response(
+            "Strava credentials not configured",
+            error_type="authentication_required",
+            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
+        )
+
+    try:
+        async with StravaClient(config) as client:
+            # Single route mode
+            if route_id is not None:
+                return await _get_single_route(client, route_id, unit)
+
+            # List routes mode
+            return await _list_routes(client, limit, unit)
+
+    except StravaAPIError as e:
+        error_type = "api_error"
+        suggestions = []
+
+        if e.status_code == 404:
+            error_type = "not_found"
+            suggestions = ["Check that the route ID is correct and belongs to your account"]
+        elif e.status_code == 429:
+            error_type = "rate_limit"
+            suggestions = ["Wait a few minutes before making more requests"]
+
+        return ResponseBuilder.build_error_response(
+            e.message,
+            error_type=error_type,
+            suggestions=suggestions if suggestions else None,
+        )
+    except Exception as e:
+        return ResponseBuilder.build_error_response(
+            f"Unexpected error: {str(e)}",
+            error_type="internal_error",
+        )
+
+
+async def _get_single_route(
+    client: StravaClient, route_id: int, unit: MeasurementPreference
+) -> str:
+    """Get a single route."""
+    route = await client.get_route(route_id)
+
+    route_data = {
+        "id": route.id,
+        "name": route.name,
+        "description": route.description,
+        "athlete_id": route.athlete.id if route.athlete else None,
+        "distance": {
+            "meters": route.distance,
+            "formatted": f"{route.distance / 1000:.2f} km"
+            if unit == "meters"
+            else f"{route.distance * 0.000621371:.2f} mi",
+        },
+        "elevation_gain": {
+            "meters": route.elevation_gain,
+            "formatted": f"{route.elevation_gain:.0f} m"
+            if unit == "meters"
+            else f"{route.elevation_gain * 3.28084:.0f} ft",
+        },
+        "type": route.type,
+        "sub_type": route.sub_type,
+        "private": route.private,
+        "starred": route.starred,
+        "timestamp": route.timestamp,
+    }
+
+    # Estimated moving time
+    if route.estimated_moving_time:
+        route_data["estimated_moving_time"] = {
+            "seconds": route.estimated_moving_time,
+            "formatted": f"{route.estimated_moving_time // 3600}h {(route.estimated_moving_time % 3600) // 60}m",
+        }
+
+    # Segments
+    if route.segments:
+        route_data["segments"] = [
+            {
+                "id": seg.id,
+                "name": seg.name,
+                "distance": {
+                    "meters": seg.distance,
+                    "formatted": f"{seg.distance / 1000:.2f} km"
+                    if unit == "meters"
+                    else f"{seg.distance * 0.000621371:.2f} mi",
+                },
+                "avg_grade": {
+                    "percent": seg.average_grade,
+                    "formatted": f"{seg.average_grade:.1f}%",
+                },
+                "climb_category": seg.climb_category,
+            }
+            for seg in route.segments
+        ]
+
+    data = {"route": route_data}
+
+    metadata = {
+        "query_type": "single_route",
+        "route_id": route_id,
+    }
+
+    return ResponseBuilder.build_response(data, metadata=metadata)
+
+
+async def _list_routes(client: StravaClient, limit: int, unit: MeasurementPreference) -> str:
+    """List all routes."""
+    routes = await client.list_athlete_routes(page=1, per_page=limit)
+
+    formatted_routes = []
+    for route in routes[:limit]:
+        formatted_routes.append(
+            {
+                "id": route.id,
+                "name": route.name,
+                "description": route.description,
+                "distance": {
+                    "meters": route.distance,
+                    "formatted": f"{route.distance / 1000:.2f} km"
+                    if unit == "meters"
+                    else f"{route.distance * 0.000621371:.2f} mi",
+                },
+                "elevation_gain": {
+                    "meters": route.elevation_gain,
+                    "formatted": f"{route.elevation_gain:.0f} m"
+                    if unit == "meters"
+                    else f"{route.elevation_gain * 3.28084:.0f} ft",
+                },
+                "type": route.type,
+                "sub_type": route.sub_type,
+                "starred": route.starred,
+                "timestamp": route.timestamp,
+            }
+        )
+
+    data = {
+        "routes": formatted_routes,
+        "count": len(formatted_routes),
+    }
+
+    metadata = {
+        "query_type": "list_routes",
+        "count": len(formatted_routes),
+    }
+
+    return ResponseBuilder.build_response(data, metadata=metadata)
+
+
+async def export_route(
+    route_id: Annotated[int, "Route ID"],
+    format: Annotated[Literal["gpx", "tcx"], "Export format ('gpx' or 'tcx')"] = "gpx",
+) -> str:
+    """Export a route to GPX or TCX format.
+
+    Returns: JSON string with structure:
+    {
+        "data": {
+            "route_id": N,
+            "format": "gpx" | "tcx",
+            "content": "...",      // File content
+            "filename": "route_12345.gpx"
+        },
+        "metadata": {
+            "fetched_at": "ISO timestamp"
+        }
+    }
+
+    Note: The content field contains the raw GPX/TCX XML data.
     """
-    path = Path(export_path)
-
-    # Check if path exists
-    if not path.exists():
-        try:
-            path.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            return False, f"Could not create export directory: {str(e)}"
-
-    # Check if it's a directory
-    if not path.is_dir():
-        return False, f"Export path is not a directory: {export_path}"
-
-    # Check if it's writable
-    if not os.access(path, os.W_OK):
-        return False, f"Export directory is not writable: {export_path}"
-
-    return True, ""
-
-
-async def export_route_gpx(
-    route_id: Annotated[int, "The ID of the route"],
-    filename: Annotated[str | None, "Custom filename (defaults to route_{id}.gpx)"] = None,
-) -> str:
-    """Export a route as GPX file."""
     config = load_config()
 
     if not validate_credentials(config):
-        return (
-            "Error: Strava credentials not configured. "
-            "Please run 'strava-mcp-auth' to set up authentication."
+        return ResponseBuilder.build_error_response(
+            "Strava credentials not configured",
+            error_type="authentication_required",
+            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
+        )
+
+    if format not in ["gpx", "tcx"]:
+        return ResponseBuilder.build_error_response(
+            f"Invalid format: '{format}'. Must be 'gpx' or 'tcx'.",
+            error_type="validation_error",
         )
 
     try:
-        # Validate export path
-        export_path = config.route_export_path
-        is_valid, error_msg = validate_export_path(export_path)
-
-        if not is_valid:
-            return f"Error: {error_msg}"
-
-        # Determine filename
-        if not filename:
-            filename = f"route_{route_id}.gpx"
-        elif not filename.endswith(".gpx"):
-            filename += ".gpx"
-
-        file_path = Path(export_path) / filename
-
         async with StravaClient(config) as client:
-            # Get route details first
-            route = await client.get_route(route_id)
+            if format == "gpx":
+                content = await client.export_route_gpx(route_id)
+            else:  # tcx
+                content = await client.export_route_tcx(route_id)
 
-            # Export GPX
-            gpx_data = await client.export_route_gpx(route_id)
+            data = {
+                "route_id": route_id,
+                "format": format,
+                "content": content,
+                "filename": f"route_{route_id}.{format}",
+                "size_bytes": len(content.encode("utf-8")),
+            }
 
-            # Write to file
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(gpx_data)
+            metadata = {
+                "export_format": format,
+                "route_id": route_id,
+            }
 
-            return (
-                f"Successfully exported route '{route.name}' to GPX:\n"
-                f"File: {file_path.absolute()}\n"
-                f"Size: {len(gpx_data)} bytes"
-            )
+            return ResponseBuilder.build_response(data, metadata=metadata)
 
     except StravaAPIError as e:
-        return f"Error: {e.message}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"
+        error_type = "api_error"
+        suggestions = []
 
+        if e.status_code == 404:
+            error_type = "not_found"
+            suggestions = ["Check that the route ID is correct and belongs to your account"]
+        elif e.status_code == 429:
+            error_type = "rate_limit"
+            suggestions = ["Wait a few minutes before making more requests"]
 
-async def export_route_tcx(
-    route_id: Annotated[int, "The ID of the route"],
-    filename: Annotated[str | None, "Custom filename (defaults to route_{id}.tcx)"] = None,
-) -> str:
-    """Export a route as TCX file."""
-    config = load_config()
-
-    if not validate_credentials(config):
-        return (
-            "Error: Strava credentials not configured. "
-            "Please run 'strava-mcp-auth' to set up authentication."
+        return ResponseBuilder.build_error_response(
+            e.message,
+            error_type=error_type,
+            suggestions=suggestions if suggestions else None,
         )
-
-    try:
-        # Validate export path
-        export_path = config.route_export_path
-        is_valid, error_msg = validate_export_path(export_path)
-
-        if not is_valid:
-            return f"Error: {error_msg}"
-
-        # Determine filename
-        if not filename:
-            filename = f"route_{route_id}.tcx"
-        elif not filename.endswith(".tcx"):
-            filename += ".tcx"
-
-        file_path = Path(export_path) / filename
-
-        async with StravaClient(config) as client:
-            # Get route details first
-            route = await client.get_route(route_id)
-
-            # Export TCX
-            tcx_data = await client.export_route_tcx(route_id)
-
-            # Write to file
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(tcx_data)
-
-            return (
-                f"Successfully exported route '{route.name}' to TCX:\n"
-                f"File: {file_path.absolute()}\n"
-                f"Size: {len(tcx_data)} bytes"
-            )
-
-    except StravaAPIError as e:
-        return f"Error: {e.message}"
     except Exception as e:
-        return f"Unexpected error: {str(e)}"
+        return ResponseBuilder.build_error_response(
+            f"Unexpected error: {str(e)}",
+            error_type="internal_error",
+        )

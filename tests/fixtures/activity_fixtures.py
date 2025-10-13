@@ -2,10 +2,7 @@
 
 SUMMARY_ACTIVITY = {
     "resource_state": 2,
-    "athlete": {
-        "id": 134815,
-        "resource_state": 1
-    },
+    "athlete": {"id": 134815, "resource_state": 1},
     "name": "Happy Friday",
     "distance": 24931.4,
     "moving_time": 4500,
@@ -33,11 +30,7 @@ SUMMARY_ACTIVITY = {
     "comment_count": 1,
     "athlete_count": 1,
     "photo_count": 0,
-    "map": {
-        "id": "a12345678987654321",
-        "summary_polyline": None,
-        "resource_state": 2
-    },
+    "map": {"id": "a12345678987654321", "summary_polyline": None, "resource_state": 2},
     "trainer": True,
     "commute": False,
     "manual": False,
@@ -59,7 +52,7 @@ SUMMARY_ACTIVITY = {
     "pr_count": 0,
     "total_photo_count": 1,
     "has_kudoed": False,
-    "suffer_score": 82
+    "suffer_score": 82,
 }
 
 DETAILED_ACTIVITY = {
@@ -67,10 +60,7 @@ DETAILED_ACTIVITY = {
     "resource_state": 3,
     "external_id": "garmin_push_12345678987654321",
     "upload_id": 98765432123456780,
-    "athlete": {
-        "id": 134815,
-        "resource_state": 1
-    },
+    "athlete": {"id": 134815, "resource_state": 1},
     "name": "Happy Friday",
     "distance": 28099,
     "moving_time": 4207,
@@ -95,7 +85,7 @@ DETAILED_ACTIVITY = {
         "id": "a1410355832",
         "polyline": "ki{eFvqfiVqAWQIGEEKAY...",
         "resource_state": 3,
-        "summary_polyline": "ki{eFvqfiVsBmA`Feh@..."
+        "summary_polyline": "ki{eFvqfiVsBmA`Feh@...",
     },
     "trainer": False,
     "commute": False,
@@ -132,7 +122,7 @@ DETAILED_ACTIVITY = {
             "moving_time": 141,
             "split": 1,
             "average_speed": 7.1,
-            "pace_zone": 0
+            "pace_zone": 0,
         }
     ],
     "laps": [],
@@ -141,18 +131,15 @@ DETAILED_ACTIVITY = {
         "primary": True,
         "name": "Tarmac",
         "resource_state": 2,
-        "distance": 32547610
+        "distance": 32547610,
     },
     "partner_brand_tag": None,
-    "photos": {
-        "primary": None,
-        "count": 2
-    },
+    "photos": {"primary": None, "count": 2},
     "highlighted_kudosers": [],
     "device_name": "Garmin Edge 1030",
     "embed_token": "18e4615989b47dd4ff3dc711b0aa4502e4b311a9",
     "segment_leaderboard_opt_out": False,
-    "leaderboard_opt_out": False
+    "leaderboard_opt_out": False,
 }
 
 ACTIVITY_LAPS = [
@@ -160,14 +147,8 @@ ACTIVITY_LAPS = [
         "id": 12345678987654320,
         "resource_state": 2,
         "name": "Lap 1",
-        "activity": {
-            "id": 12345678987654320,
-            "resource_state": 1
-        },
-        "athlete": {
-            "id": 12345678987654320,
-            "resource_state": 1
-        },
+        "activity": {"id": 12345678987654320, "resource_state": 1},
+        "athlete": {"id": 12345678987654320, "resource_state": 1},
         "elapsed_time": 1691,
         "moving_time": 1587,
         "start_date": "2018-02-08T14:13:37.000Z",
@@ -182,20 +163,14 @@ ACTIVITY_LAPS = [
         "device_watts": True,
         "average_watts": 228.2,
         "lap_index": 1,
-        "split": 1
+        "split": 1,
     },
     {
         "id": 12345678987654321,
         "resource_state": 2,
         "name": "Lap 2",
-        "activity": {
-            "id": 12345678987654320,
-            "resource_state": 1
-        },
-        "athlete": {
-            "id": 12345678987654320,
-            "resource_state": 1
-        },
+        "activity": {"id": 12345678987654320, "resource_state": 1},
+        "athlete": {"id": 12345678987654320, "resource_state": 1},
         "elapsed_time": 1500,
         "moving_time": 1450,
         "start_date": "2018-02-08T14:41:48.000Z",
@@ -210,8 +185,8 @@ ACTIVITY_LAPS = [
         "device_watts": True,
         "average_watts": 235.0,
         "lap_index": 2,
-        "split": 2
-    }
+        "split": 2,
+    },
 ]
 
 ACTIVITY_STREAMS = {
@@ -219,44 +194,44 @@ ACTIVITY_STREAMS = {
         "data": [0, 10, 20, 30, 40, 50],
         "series_type": "time",
         "original_size": 6,
-        "resolution": "high"
+        "resolution": "high",
     },
     "distance": {
         "data": [0.0, 50.0, 100.0, 150.0, 200.0, 250.0],
         "series_type": "distance",
         "original_size": 6,
-        "resolution": "high"
+        "resolution": "high",
     },
     "altitude": {
         "data": [10.0, 15.0, 20.0, 25.0, 22.0, 18.0],
         "series_type": "distance",
         "original_size": 6,
-        "resolution": "high"
+        "resolution": "high",
     },
     "velocity_smooth": {
         "data": [5.0, 5.2, 5.1, 4.9, 5.0, 5.3],
         "series_type": "distance",
         "original_size": 6,
-        "resolution": "high"
+        "resolution": "high",
     },
     "heartrate": {
         "data": [120, 125, 130, 135, 140, 145],
         "series_type": "distance",
         "original_size": 6,
-        "resolution": "high"
+        "resolution": "high",
     },
     "cadence": {
         "data": [70, 75, 80, 80, 75, 70],
         "series_type": "distance",
         "original_size": 6,
-        "resolution": "high"
+        "resolution": "high",
     },
     "watts": {
         "data": [150, 180, 200, 220, 210, 190],
         "series_type": "distance",
         "original_size": 6,
-        "resolution": "high"
-    }
+        "resolution": "high",
+    },
 }
 
 ACTIVITY_ZONES = [
@@ -271,8 +246,8 @@ ACTIVITY_ZONES = [
             {"min": 142, "max": 155, "time": 900},
             {"min": 155, "max": 162, "time": 600},
             {"min": 162, "max": 174, "time": 300},
-            {"min": 174, "max": None, "time": 500}
-        ]
+            {"min": 174, "max": None, "time": 500},
+        ],
     },
     {
         "type": "power",
@@ -286,9 +261,9 @@ ACTIVITY_ZONES = [
             {"min": 186, "max": 229, "time": 700},
             {"min": 229, "max": 286, "time": 400},
             {"min": 286, "max": 343, "time": 200},
-            {"min": 343, "max": 999, "time": 100}
-        ]
-    }
+            {"min": 343, "max": 999, "time": 100},
+        ],
+    },
 ]
 
 ACTIVITY_COMMENTS = [
@@ -310,9 +285,9 @@ ACTIVITY_COMMENTS = [
             "premium": True,
             "summit": True,
             "created_at": "2018-01-01T00:00:00.000Z",
-            "updated_at": "2018-01-01T00:00:00.000Z"
+            "updated_at": "2018-01-01T00:00:00.000Z",
         },
-        "created_at": "2018-02-16T15:23:45.000Z"
+        "created_at": "2018-02-16T15:23:45.000Z",
     },
     {
         "id": 123456790,
@@ -332,10 +307,10 @@ ACTIVITY_COMMENTS = [
             "premium": False,
             "summit": False,
             "created_at": "2017-01-01T00:00:00.000Z",
-            "updated_at": "2017-01-01T00:00:00.000Z"
+            "updated_at": "2017-01-01T00:00:00.000Z",
         },
-        "created_at": "2018-02-16T16:45:12.000Z"
-    }
+        "created_at": "2018-02-16T16:45:12.000Z",
+    },
 ]
 
 ACTIVITY_KUDOERS = [
@@ -353,7 +328,7 @@ ACTIVITY_KUDOERS = [
         "premium": True,
         "summit": True,
         "created_at": "2016-01-01T00:00:00.000Z",
-        "updated_at": "2016-01-01T00:00:00.000Z"
+        "updated_at": "2016-01-01T00:00:00.000Z",
     },
     {
         "id": 222222,
@@ -369,7 +344,7 @@ ACTIVITY_KUDOERS = [
         "premium": False,
         "summit": False,
         "created_at": "2015-01-01T00:00:00.000Z",
-        "updated_at": "2015-01-01T00:00:00.000Z"
+        "updated_at": "2015-01-01T00:00:00.000Z",
     },
     {
         "id": 333333,
@@ -385,6 +360,6 @@ ACTIVITY_KUDOERS = [
         "premium": True,
         "summit": True,
         "created_at": "2014-01-01T00:00:00.000Z",
-        "updated_at": "2014-01-01T00:00:00.000Z"
-    }
+        "updated_at": "2014-01-01T00:00:00.000Z",
+    },
 ]

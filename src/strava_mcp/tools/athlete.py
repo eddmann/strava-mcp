@@ -1,247 +1,370 @@
-"""Athlete-related tools for Strava MCP server."""
+"""Athlete-related tools for Strava MCP server.
 
-import json
-from typing import Annotated
+This module provides athlete profile tools with structured JSON output.
+"""
+
+from typing import Annotated, Literal
 
 from ..auth import load_config, validate_credentials
 from ..client import StravaAPIError, StravaClient
-from ..formatters import format_distance, format_duration, format_elevation
+from ..models import MeasurementPreference
+from ..response_builder import ResponseBuilder
 
 
-async def get_athlete_profile() -> str:
-    """Get the authenticated athlete's profile information."""
+async def get_athlete_profile(
+    include_stats: Annotated[bool, "Include athlete statistics"] = True,
+    include_zones: Annotated[bool, "Include training zones (HR and power)"] = True,
+    stats_period: Annotated[
+        Literal["recent", "ytd", "all"],
+        "Statistics period: 'recent' (last 4 weeks), 'ytd' (year to date), or 'all' (all time)",
+    ] = "all",
+    unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
+) -> str:
+    """Get comprehensive athlete profile with optional stats and zones.
+
+    This unified tool provides:
+    - Basic profile (name, location, weight, FTP, gear)
+    - Optional statistics (recent, YTD, all-time)
+    - Optional training zones (heart rate and power)
+
+    All in a single API call with structured JSON output.
+
+    Returns: JSON string with structure:
+    {
+        "data": {
+            "profile": {
+                "id": ...,
+                "name": "...",
+                "location": "...",
+                "weight": {...},
+                "ftp": ...,
+                "bikes": [...],
+                "shoes": [...]
+            },
+            "statistics": {
+                "recent": {...},
+                "ytd": {...},
+                "all_time": {...}
+            },
+            "zones": {
+                "heart_rate": {...},
+                "power": {...}
+            }
+        },
+        "metadata": {
+            "fetched_at": "ISO timestamp",
+            "includes": [...]
+        }
+    }
+
+    Examples:
+        - Get full profile: get_athlete_profile()
+        - Get profile only: get_athlete_profile(include_stats=False, include_zones=False)
+        - Get recent stats: get_athlete_profile(stats_period="recent")
+    """
     config = load_config()
 
     if not validate_credentials(config):
-        return (
-            "Error: Strava credentials not configured. "
-            "Please run 'strava-mcp-auth' to set up authentication."
+        return ResponseBuilder.build_error_response(
+            "Strava credentials not configured",
+            error_type="authentication_required",
+            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
         )
 
     try:
         async with StravaClient(config) as client:
+            # Get athlete profile
             athlete = await client.get_athlete()
 
-            output = [f"Athlete Profile: {athlete.firstname} {athlete.lastname}\n"]
-            output.append(f"ID: {athlete.id}")
+            # Build profile data
+            profile_data = {
+                "id": athlete.id,
+                "name": f"{athlete.firstname} {athlete.lastname}",
+                "username": athlete.username,
+                "location": {
+                    "city": athlete.city,
+                    "state": athlete.state,
+                    "country": athlete.country,
+                },
+                "sex": athlete.sex,
+                "created_at": athlete.created_at,
+                "updated_at": athlete.updated_at,
+            }
 
-            if athlete.username:
-                output.append(f"Username: {athlete.username}")
-
-            if athlete.bio:
-                output.append(f"Bio: {athlete.bio}")
-
-            output.append("")
-            output.append("Location:")
-            if athlete.city:
-                output.append(f"  City: {athlete.city}")
-            if athlete.state:
-                output.append(f"  State: {athlete.state}")
-            if athlete.country:
-                output.append(f"  Country: {athlete.country}")
-
-            output.append("")
-            output.append("Account:")
-            output.append(f"  Premium: {'Yes' if athlete.premium else 'No'}")
-            output.append(f"  Summit: {'Yes' if athlete.summit else 'No'}")
-
-            if athlete.measurement_preference:
-                output.append(f"  Measurement: {athlete.measurement_preference}")
-
+            # Weight
             if athlete.weight:
-                output.append(f"  Weight: {athlete.weight} kg")
+                profile_data["weight"] = {
+                    "kg": athlete.weight,
+                    "formatted": f"{athlete.weight} kg"
+                    if unit == "meters"
+                    else f"{athlete.weight * 2.20462:.1f} lbs",
+                }
 
+            # FTP
             if athlete.ftp:
-                output.append(f"  FTP: {athlete.ftp} W")
+                profile_data["ftp"] = {"watts": athlete.ftp}
 
-            if athlete.created_at:
-                output.append(f"  Member since: {athlete.created_at.strftime('%Y-%m-%d')}")
+            # Measurement preference
+            profile_data["measurement_preference"] = athlete.measurement_preference
 
-            return "\n".join(output)
+            # Profile photo
+            if athlete.profile:
+                profile_data["profile_photo"] = athlete.profile
+
+            # Bikes
+            if athlete.bikes:
+                profile_data["bikes"] = [
+                    {
+                        "id": bike.id,
+                        "name": bike.name,
+                        "primary": bike.primary,
+                        "distance": {
+                            "meters": bike.distance,
+                            "formatted": f"{bike.distance / 1000:.1f} km"
+                            if unit == "meters"
+                            else f"{bike.distance * 0.000621371:.1f} mi",
+                        },
+                    }
+                    for bike in athlete.bikes
+                ]
+
+            # Shoes
+            if athlete.shoes:
+                profile_data["shoes"] = [
+                    {
+                        "id": shoe.id,
+                        "name": shoe.name,
+                        "primary": shoe.primary,
+                        "distance": {
+                            "meters": shoe.distance,
+                            "formatted": f"{shoe.distance / 1000:.1f} km"
+                            if unit == "meters"
+                            else f"{shoe.distance * 0.000621371:.1f} mi",
+                        },
+                    }
+                    for shoe in athlete.shoes
+                ]
+
+            data = {"profile": profile_data}
+            metadata = {"includes": []}
+
+            # Add statistics if requested
+            if include_stats:
+                stats = await client.get_athlete_stats(athlete.id)
+
+                statistics = {}
+
+                # Recent stats (last 4 weeks)
+                if stats_period in ["recent", "all"]:
+                    recent_run = stats.recent_run_totals
+                    recent_ride = stats.recent_ride_totals
+                    recent_swim = stats.recent_swim_totals
+
+                    statistics["recent"] = {
+                        "description": "Last 4 weeks",
+                        "run": {
+                            "count": recent_run.count,
+                            "distance": {
+                                "meters": recent_run.distance,
+                                "formatted": f"{recent_run.distance / 1000:.1f} km"
+                                if unit == "meters"
+                                else f"{recent_run.distance * 0.000621371:.1f} mi",
+                            },
+                            "moving_time": {
+                                "seconds": recent_run.moving_time,
+                                "formatted": f"{recent_run.moving_time // 3600}h {(recent_run.moving_time % 3600) // 60}m",
+                            },
+                            "elevation_gain": {
+                                "meters": recent_run.elevation_gain,
+                                "formatted": f"{recent_run.elevation_gain:.0f} m"
+                                if unit == "meters"
+                                else f"{recent_run.elevation_gain * 3.28084:.0f} ft",
+                            },
+                        },
+                        "ride": {
+                            "count": recent_ride.count,
+                            "distance": {
+                                "meters": recent_ride.distance,
+                                "formatted": f"{recent_ride.distance / 1000:.1f} km"
+                                if unit == "meters"
+                                else f"{recent_ride.distance * 0.000621371:.1f} mi",
+                            },
+                            "moving_time": {
+                                "seconds": recent_ride.moving_time,
+                                "formatted": f"{recent_ride.moving_time // 3600}h {(recent_ride.moving_time % 3600) // 60}m",
+                            },
+                            "elevation_gain": {
+                                "meters": recent_ride.elevation_gain,
+                                "formatted": f"{recent_ride.elevation_gain:.0f} m"
+                                if unit == "meters"
+                                else f"{recent_ride.elevation_gain * 3.28084:.0f} ft",
+                            },
+                        },
+                        "swim": {
+                            "count": recent_swim.count,
+                            "distance": {
+                                "meters": recent_swim.distance,
+                                "formatted": f"{recent_swim.distance / 1000:.1f} km"
+                                if unit == "meters"
+                                else f"{recent_swim.distance * 0.000621371:.1f} mi",
+                            },
+                            "moving_time": {
+                                "seconds": recent_swim.moving_time,
+                                "formatted": f"{recent_swim.moving_time // 3600}h {(recent_swim.moving_time % 3600) // 60}m",
+                            },
+                        },
+                    }
+
+                # YTD stats
+                if stats_period in ["ytd", "all"]:
+                    ytd_run = stats.ytd_run_totals
+                    ytd_ride = stats.ytd_ride_totals
+                    ytd_swim = stats.ytd_swim_totals
+
+                    statistics["ytd"] = {
+                        "description": "Year to date",
+                        "run": {
+                            "count": ytd_run.count,
+                            "distance": {
+                                "meters": ytd_run.distance,
+                                "formatted": f"{ytd_run.distance / 1000:.1f} km"
+                                if unit == "meters"
+                                else f"{ytd_run.distance * 0.000621371:.1f} mi",
+                            },
+                            "moving_time": {
+                                "seconds": ytd_run.moving_time,
+                                "formatted": f"{ytd_run.moving_time // 3600}h {(ytd_run.moving_time % 3600) // 60}m",
+                            },
+                            "elevation_gain": {
+                                "meters": ytd_run.elevation_gain,
+                                "formatted": f"{ytd_run.elevation_gain:.0f} m"
+                                if unit == "meters"
+                                else f"{ytd_run.elevation_gain * 3.28084:.0f} ft",
+                            },
+                        },
+                        "ride": {
+                            "count": ytd_ride.count,
+                            "distance": {
+                                "meters": ytd_ride.distance,
+                                "formatted": f"{ytd_ride.distance / 1000:.1f} km"
+                                if unit == "meters"
+                                else f"{ytd_ride.distance * 0.000621371:.1f} mi",
+                            },
+                            "moving_time": {
+                                "seconds": ytd_ride.moving_time,
+                                "formatted": f"{ytd_ride.moving_time // 3600}h {(ytd_ride.moving_time % 3600) // 60}m",
+                            },
+                            "elevation_gain": {
+                                "meters": ytd_ride.elevation_gain,
+                                "formatted": f"{ytd_ride.elevation_gain:.0f} m"
+                                if unit == "meters"
+                                else f"{ytd_ride.elevation_gain * 3.28084:.0f} ft",
+                            },
+                        },
+                        "swim": {
+                            "count": ytd_swim.count,
+                            "distance": {
+                                "meters": ytd_swim.distance,
+                                "formatted": f"{ytd_swim.distance / 1000:.1f} km"
+                                if unit == "meters"
+                                else f"{ytd_swim.distance * 0.000621371:.1f} mi",
+                            },
+                            "moving_time": {
+                                "seconds": ytd_swim.moving_time,
+                                "formatted": f"{ytd_swim.moving_time // 3600}h {(ytd_swim.moving_time % 3600) // 60}m",
+                            },
+                        },
+                    }
+
+                # All-time stats
+                if stats_period == "all":
+                    all_run = stats.all_run_totals
+                    all_ride = stats.all_ride_totals
+                    all_swim = stats.all_swim_totals
+
+                    statistics["all_time"] = {
+                        "description": "All time",
+                        "run": {
+                            "count": all_run.count,
+                            "distance": {
+                                "meters": all_run.distance,
+                                "formatted": f"{all_run.distance / 1000:.1f} km"
+                                if unit == "meters"
+                                else f"{all_run.distance * 0.000621371:.1f} mi",
+                            },
+                            "moving_time": {
+                                "seconds": all_run.moving_time,
+                                "formatted": f"{all_run.moving_time // 3600}h {(all_run.moving_time % 3600) // 60}m",
+                            },
+                            "elevation_gain": {
+                                "meters": all_run.elevation_gain,
+                                "formatted": f"{all_run.elevation_gain:.0f} m"
+                                if unit == "meters"
+                                else f"{all_run.elevation_gain * 3.28084:.0f} ft",
+                            },
+                        },
+                        "ride": {
+                            "count": all_ride.count,
+                            "distance": {
+                                "meters": all_ride.distance,
+                                "formatted": f"{all_ride.distance / 1000:.1f} km"
+                                if unit == "meters"
+                                else f"{all_ride.distance * 0.000621371:.1f} mi",
+                            },
+                            "moving_time": {
+                                "seconds": all_ride.moving_time,
+                                "formatted": f"{all_ride.moving_time // 3600}h {(all_ride.moving_time % 3600) // 60}m",
+                            },
+                            "elevation_gain": {
+                                "meters": all_ride.elevation_gain,
+                                "formatted": f"{all_ride.elevation_gain:.0f} m"
+                                if unit == "meters"
+                                else f"{all_ride.elevation_gain * 3.28084:.0f} ft",
+                            },
+                        },
+                        "swim": {
+                            "count": all_swim.count,
+                            "distance": {
+                                "meters": all_swim.distance,
+                                "formatted": f"{all_swim.distance / 1000:.1f} km"
+                                if unit == "meters"
+                                else f"{all_swim.distance * 0.000621371:.1f} mi",
+                            },
+                            "moving_time": {
+                                "seconds": all_swim.moving_time,
+                                "formatted": f"{all_swim.moving_time // 3600}h {(all_swim.moving_time % 3600) // 60}m",
+                            },
+                        },
+                    }
+
+                data["statistics"] = statistics
+                metadata["includes"].append(f"stats:{stats_period}")
+
+            # Add zones if requested
+            if include_zones:
+                zones = await client.get_athlete_zones()
+
+                zones_data = ResponseBuilder.format_zones(zones.model_dump())
+                data["zones"] = zones_data
+                metadata["includes"].append("zones")
+
+            return ResponseBuilder.build_response(data, metadata=metadata)
 
     except StravaAPIError as e:
-        return f"Error: {e.message}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"
+        error_type = "api_error"
+        suggestions = []
 
+        if e.status_code == 429:
+            error_type = "rate_limit"
+            suggestions = ["Wait a few minutes before making more requests"]
 
-async def get_athlete_stats(
-    athlete_id: Annotated[int | None, "Athlete ID (defaults to authenticated athlete)"] = None,
-) -> str:
-    """Get statistics for an athlete (recent, year-to-date, and all-time)."""
-    config = load_config()
-
-    if not validate_credentials(config):
-        return (
-            "Error: Strava credentials not configured. "
-            "Please run 'strava-mcp-auth' to set up authentication."
+        return ResponseBuilder.build_error_response(
+            e.message,
+            error_type=error_type,
+            suggestions=suggestions if suggestions else None,
         )
-
-    try:
-        async with StravaClient(config) as client:
-            # If no athlete_id provided, get current athlete's ID
-            if athlete_id is None:
-                athlete = await client.get_athlete()
-                athlete_id = athlete.id
-
-            stats = await client.get_athlete_stats(athlete_id)
-            unit = config.strava_measurement_preference
-
-            output = [f"Athlete Stats (ID: {athlete_id})\n"]
-
-            # Recent totals (last 4 weeks)
-            output.append("=== RECENT (Last 4 Weeks) ===\n")
-
-            output.append("Ride:")
-            output.append(f"  Count: {stats.recent_ride_totals.count}")
-            output.append(f"  Distance: {format_distance(stats.recent_ride_totals.distance, unit)}")
-            output.append(f"  Time: {format_duration(stats.recent_ride_totals.moving_time)}")
-            output.append(
-                f"  Elevation: {format_elevation(stats.recent_ride_totals.elevation_gain, unit)}"
-            )
-            output.append("")
-
-            output.append("Run:")
-            output.append(f"  Count: {stats.recent_run_totals.count}")
-            output.append(f"  Distance: {format_distance(stats.recent_run_totals.distance, unit)}")
-            output.append(f"  Time: {format_duration(stats.recent_run_totals.moving_time)}")
-            output.append(
-                f"  Elevation: {format_elevation(stats.recent_run_totals.elevation_gain, unit)}"
-            )
-            output.append("")
-
-            output.append("Swim:")
-            output.append(f"  Count: {stats.recent_swim_totals.count}")
-            output.append(f"  Distance: {format_distance(stats.recent_swim_totals.distance, unit)}")
-            output.append(f"  Time: {format_duration(stats.recent_swim_totals.moving_time)}")
-            output.append("")
-
-            # Year to date totals
-            output.append("=== YEAR TO DATE ===\n")
-
-            output.append("Ride:")
-            output.append(f"  Count: {stats.ytd_ride_totals.count}")
-            output.append(f"  Distance: {format_distance(stats.ytd_ride_totals.distance, unit)}")
-            output.append(f"  Time: {format_duration(stats.ytd_ride_totals.moving_time)}")
-            output.append(
-                f"  Elevation: {format_elevation(stats.ytd_ride_totals.elevation_gain, unit)}"
-            )
-            output.append("")
-
-            output.append("Run:")
-            output.append(f"  Count: {stats.ytd_run_totals.count}")
-            output.append(f"  Distance: {format_distance(stats.ytd_run_totals.distance, unit)}")
-            output.append(f"  Time: {format_duration(stats.ytd_run_totals.moving_time)}")
-            output.append(
-                f"  Elevation: {format_elevation(stats.ytd_run_totals.elevation_gain, unit)}"
-            )
-            output.append("")
-
-            output.append("Swim:")
-            output.append(f"  Count: {stats.ytd_swim_totals.count}")
-            output.append(f"  Distance: {format_distance(stats.ytd_swim_totals.distance, unit)}")
-            output.append(f"  Time: {format_duration(stats.ytd_swim_totals.moving_time)}")
-            output.append("")
-
-            # All time totals
-            output.append("=== ALL TIME ===\n")
-
-            output.append("Ride:")
-            output.append(f"  Count: {stats.all_ride_totals.count}")
-            output.append(f"  Distance: {format_distance(stats.all_ride_totals.distance, unit)}")
-            output.append(f"  Time: {format_duration(stats.all_ride_totals.moving_time)}")
-            output.append(
-                f"  Elevation: {format_elevation(stats.all_ride_totals.elevation_gain, unit)}"
-            )
-            output.append("")
-
-            output.append("Run:")
-            output.append(f"  Count: {stats.all_run_totals.count}")
-            output.append(f"  Distance: {format_distance(stats.all_run_totals.distance, unit)}")
-            output.append(f"  Time: {format_duration(stats.all_run_totals.moving_time)}")
-            output.append(
-                f"  Elevation: {format_elevation(stats.all_run_totals.elevation_gain, unit)}"
-            )
-            output.append("")
-
-            output.append("Swim:")
-            output.append(f"  Count: {stats.all_swim_totals.count}")
-            output.append(f"  Distance: {format_distance(stats.all_swim_totals.distance, unit)}")
-            output.append(f"  Time: {format_duration(stats.all_swim_totals.moving_time)}")
-            output.append("")
-
-            # Personal bests
-            if stats.biggest_ride_distance:
-                output.append(f"Biggest Ride: {format_distance(stats.biggest_ride_distance, unit)}")
-            if stats.biggest_climb_elevation_gain:
-                output.append(
-                    f"Biggest Climb: {format_elevation(stats.biggest_climb_elevation_gain, unit)}"
-                )
-
-            return "\n".join(output)
-
-    except StravaAPIError as e:
-        return f"Error: {e.message}"
     except Exception as e:
-        return f"Unexpected error: {str(e)}"
-
-
-async def get_athlete_zones() -> str:
-    """Get the authenticated athlete's heart rate and power zones."""
-    config = load_config()
-
-    if not validate_credentials(config):
-        return (
-            "Error: Strava credentials not configured. "
-            "Please run 'strava-mcp-auth' to set up authentication."
+        return ResponseBuilder.build_error_response(
+            f"Unexpected error: {str(e)}",
+            error_type="internal_error",
         )
-
-    try:
-        async with StravaClient(config) as client:
-            zones = await client.get_athlete_zones()
-
-            output = ["Athlete Training Zones\n"]
-
-            # Heart rate zones
-            if zones.heart_rate:
-                output.append("=== HEART RATE ZONES ===")
-                output.append(f"Custom Zones: {'Yes' if zones.heart_rate.custom_zones else 'No'}")
-                output.append("")
-
-                for i, zone in enumerate(zones.heart_rate.zones, 1):
-                    min_hr = zone.min if zone.min is not None else "N/A"
-                    max_hr = zone.max if zone.max is not None else "N/A"
-                    output.append(f"Zone {i}: {min_hr} - {max_hr} bpm")
-
-                output.append("")
-
-            # Power zones
-            if zones.power:
-                output.append("=== POWER ZONES ===")
-                output.append("")
-
-                for i, zone in enumerate(zones.power.zones, 1):
-                    min_power = zone.min if zone.min is not None else "N/A"
-                    max_power = zone.max if zone.max is not None else "N/A"
-                    output.append(f"Zone {i}: {min_power} - {max_power} W")
-
-                output.append("")
-
-            if not zones.heart_rate and not zones.power:
-                return "No training zones configured for this athlete."
-
-            # Include raw JSON for reference
-            output.append("\n--- Raw Zone Data (JSON) ---")
-            output.append(json.dumps(zones.model_dump(), indent=2, default=str))
-
-            return "\n".join(output)
-
-    except StravaAPIError as e:
-        if e.status_code == 403:
-            return (
-                "Error: Access denied. The 'profile:read_all' scope is required to access training zones. "
-                "Please re-run 'strava-mcp-auth' to grant the necessary permissions."
-            )
-        return f"Error: {e.message}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"
