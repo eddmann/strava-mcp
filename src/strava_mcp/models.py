@@ -53,9 +53,13 @@ ClubMembership = Literal["member", "pending"]
 
 # Base Meta models
 class MetaAthlete(BaseModel):
-    """Minimal athlete representation in other resources."""
+    """Minimal athlete representation in other resources.
 
-    id: int
+    Note: id may be None in some API responses (e.g., kudos/comments)
+    when athletes have privacy settings enabled.
+    """
+
+    id: int | None = None
     resource_state: int | None = None
 
 
