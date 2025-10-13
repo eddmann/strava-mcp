@@ -3,7 +3,7 @@
 This module provides activity query tools with structured JSON output.
 """
 
-from typing import Annotated
+from typing import Any, Annotated
 
 from ..auth import load_config, validate_credentials
 from ..client import StravaAPIError, StravaClient
@@ -141,7 +141,7 @@ async def _get_single_activity(
     # Format activity
     formatted_activity = ResponseBuilder.format_activity(activity.model_dump(), unit)
 
-    data = {"activity": formatted_activity}
+    data: dict[str, Any] = {"activity": formatted_activity}
 
     # Add streams if requested
     if include_streams:
@@ -164,18 +164,19 @@ async def _get_single_activity(
         if zones:
             data["zones"] = ResponseBuilder.format_zones(zones[0].model_dump())
 
+    includes: list[str] = []
+    if include_streams:
+        includes.append(f"streams:{include_streams}")
+    if include_laps:
+        includes.append("laps")
+    if include_zones:
+        includes.append("zones")
+
     metadata = {
         "query_type": "single_activity",
         "activity_id": activity_id,
-        "includes": [],
+        "includes": includes,
     }
-
-    if include_streams:
-        metadata["includes"].append(f"streams:{include_streams}")
-    if include_laps:
-        metadata["includes"].append("laps")
-    if include_zones:
-        metadata["includes"].append("zones")
 
     return ResponseBuilder.build_response(data, metadata=metadata)
 
@@ -209,8 +210,8 @@ async def _list_activities(
     activities = activities[:limit]
 
     if not activities:
-        data = {"activities": [], "aggregated": {"count": 0}}
-        metadata = {
+        data: dict[str, Any] = {"activities": [], "aggregated": {"count": 0}}
+        metadata: dict[str, Any] = {
             "query_type": "activity_list",
             "time_range": get_range_description(time_range),
             "time_range_parsed": {
@@ -225,14 +226,14 @@ async def _list_activities(
         return ResponseBuilder.build_response(data, metadata=metadata)
 
     # Format activities
-    formatted_activities = [
+    formatted_activities: list[dict[str, Any]] = [
         ResponseBuilder.format_activity(a.model_dump(), unit) for a in activities
     ]
 
     # Aggregate metrics
     aggregated = ResponseBuilder.aggregate_activities([a.model_dump() for a in activities], unit)
 
-    data = {
+    data: dict[str, Any] = {
         "activities": formatted_activities,
         "aggregated": aggregated,
     }
@@ -291,7 +292,7 @@ async def get_activity_social(
             # Get basic activity info
             activity = await client.get_activity(activity_id)
 
-            data = {
+            data: dict[str, Any] = {
                 "activity": {
                     "id": activity.id,
                     "name": activity.name,
@@ -306,8 +307,8 @@ async def get_activity_social(
                     {
                         "id": comment.id,
                         "athlete": {
-                            "id": comment.athlete.id,
-                            "name": f"{comment.athlete.firstname} {comment.athlete.lastname}",
+                            "id": comment.athlete.id if comment.athlete else None,
+                            "name": f"{comment.athlete.firstname} {comment.athlete.lastname}" if comment.athlete else None,
                         },
                         "text": comment.text,
                         "created_at": comment.created_at,
@@ -326,15 +327,16 @@ async def get_activity_social(
                     for kudoer in kudos
                 ]
 
-            metadata = {
-                "activity_id": activity_id,
-                "includes": [],
-            }
-
+            includes: list[str] = []
             if include_comments:
-                metadata["includes"].append(f"comments:{len(data.get('comments', []))}")
+                includes.append(f"comments:{len(data.get('comments', []))}")
             if include_kudos:
-                metadata["includes"].append(f"kudos:{len(data.get('kudos', []))}")
+                includes.append(f"kudos:{len(data.get('kudos', []))}")
+
+            metadata: dict[str, Any] = {
+                "activity_id": activity_id,
+                "includes": includes,
+            }
 
             return ResponseBuilder.build_response(data, metadata=metadata)
 

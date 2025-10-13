@@ -6,7 +6,6 @@ from unittest.mock import patch
 import pytest
 
 from strava_mcp import server
-from tests.fixtures.activity_fixtures import DETAILED_ACTIVITY, SUMMARY_ACTIVITY
 from tests.fixtures.athlete_fixtures import ATHLETE_STATS, ATHLETE_ZONES, DETAILED_ATHLETE
 from tests.stubs.strava_api_stub import StravaAPIStubber
 

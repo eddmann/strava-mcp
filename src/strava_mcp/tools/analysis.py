@@ -6,7 +6,7 @@ into actionable insights.
 
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Annotated
+from typing import Any, Annotated
 
 from ..auth import load_config, validate_credentials
 from ..client import StravaAPIError, StravaClient
@@ -128,13 +128,13 @@ async def analyze_training(
             total_elevation = sum(a.total_elevation_gain for a in activities)
 
             # Activity type distribution
-            type_counts = defaultdict(int)
-            type_distance = defaultdict(float)
+            type_counts: defaultdict[str, int] = defaultdict(int)
+            type_distance: defaultdict[str, float] = defaultdict(float)
             for activity in activities:
                 type_counts[activity.type] += 1
                 type_distance[activity.type] += activity.distance
 
-            by_type = [
+            by_type: list[dict[str, Any]] = [
                 {
                     "type": activity_type,
                     "count": count,
@@ -152,7 +152,7 @@ async def analyze_training(
             ]
 
             # Weekly breakdown
-            weekly_data = defaultdict(lambda: {"count": 0, "distance": 0, "time": 0})
+            weekly_data: defaultdict[str, dict[str, int | float]] = defaultdict(lambda: {"count": 0, "distance": 0.0, "time": 0})
             for activity in activities:
                 # Get week start (Monday)
                 # activity.start_date_local is already a datetime object from Pydantic model
@@ -160,11 +160,12 @@ async def analyze_training(
                 week_start = activity_date - timedelta(days=activity_date.weekday())
                 week_key = week_start.strftime("%Y-%m-%d")
 
-                weekly_data[week_key]["count"] += 1
-                weekly_data[week_key]["distance"] += activity.distance
-                weekly_data[week_key]["time"] += activity.moving_time
+                week_dict = weekly_data[week_key]
+                week_dict["count"] = int(week_dict["count"]) + 1  # type: ignore
+                week_dict["distance"] = float(week_dict["distance"]) + activity.distance  # type: ignore
+                week_dict["time"] = int(week_dict["time"]) + activity.moving_time  # type: ignore
 
-            weekly_trends = [
+            weekly_trends: list[dict[str, Any]] = [
                 {
                     "week_start": week,
                     "activities": data["count"],
@@ -183,7 +184,7 @@ async def analyze_training(
             ]
 
             # Build response
-            data = {
+            response_data: dict[str, Any] = {
                 "period": {
                     "description": get_range_description(period),
                     "start_date": start.strftime("%Y-%m-%d"),
@@ -223,7 +224,7 @@ async def analyze_training(
             }
 
             # Generate insights
-            insights = []
+            insights: list[str] = []
 
             # Activity count insight
             if len(activities) >= period_weeks * 5:
@@ -237,11 +238,11 @@ async def analyze_training(
 
             # Weekly trend
             if len(weekly_trends) >= 2:
-                first_week = weekly_trends[0]["distance"]["meters"]
-                last_week = weekly_trends[-1]["distance"]["meters"]
-                if last_week > first_week * 1.2:
+                first_week_distance = weekly_trends[0]["distance"]["meters"]  # type: ignore
+                last_week_distance = weekly_trends[-1]["distance"]["meters"]  # type: ignore
+                if float(last_week_distance) > float(first_week_distance) * 1.2:
                     insights.append("Training volume increasing over time")
-                elif last_week < first_week * 0.8:
+                elif float(last_week_distance) < float(first_week_distance) * 0.8:
                     insights.append("Training volume decreasing over time")
 
             # Activity type diversity
@@ -250,7 +251,7 @@ async def analyze_training(
             elif len(by_type) >= 3:
                 insights.append("Good activity type diversity")
 
-            analysis = {"insights": insights}
+            analysis: dict[str, Any] = {"insights": insights}
 
             metadata = {
                 "period": get_range_description(period),
@@ -263,7 +264,7 @@ async def analyze_training(
             if activity_type:
                 metadata["activity_type"] = activity_type
 
-            return ResponseBuilder.build_response(data, analysis=analysis, metadata=metadata)
+            return ResponseBuilder.build_response(response_data, analysis=analysis, metadata=metadata)
 
     except ValueError as e:
         return ResponseBuilder.build_error_response(
@@ -346,26 +347,26 @@ async def compare_activities(
 
         async with StravaClient(config) as client:
             # Fetch activities
-            activities_data = []
+            activities_data: list[Any] = []
             for activity_id in ids:
                 activity = await client.get_activity(activity_id)
                 activities_data.append(activity)
 
             # Format activities
-            formatted_activities = []
+            formatted_activities: list[dict[str, Any]] = []
             for activity in activities_data:
                 activity_dict = activity.model_dump()
                 formatted = ResponseBuilder.format_activity(activity_dict, unit)
                 formatted_activities.append(formatted)
 
             # Build comparison
-            comparison = {}
+            comparison: dict[str, Any] = {}
 
             # Distance comparison
             if all("distance" in a for a in formatted_activities):
-                distances = [(a["id"], a["distance"]["meters"]) for a in formatted_activities]
-                longest = max(distances, key=lambda x: x[1])
-                shortest = min(distances, key=lambda x: x[1])
+                distances: list[tuple[Any, Any]] = [(a["id"], a["distance"]["meters"]) for a in formatted_activities]
+                longest: tuple[Any, Any] = max(distances, key=lambda x: x[1])
+                shortest: tuple[Any, Any] = min(distances, key=lambda x: x[1])
                 comparison["distance"] = {
                     "longest": {
                         "id": longest[0],
