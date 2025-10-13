@@ -150,6 +150,11 @@ async def get_athlete_profile(
 
             # Add statistics if requested
             if include_stats:
+                if athlete.id is None:
+                    return ResponseBuilder.build_error_response(
+                        "Athlete ID is required to fetch statistics",
+                        error_type="invalid_data",
+                    )
                 stats = await client.get_athlete_stats(athlete.id)
 
                 statistics = {}
