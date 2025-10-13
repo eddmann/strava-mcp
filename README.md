@@ -7,7 +7,7 @@ A Model Context Protocol (MCP) server for Strava integration. Access your activi
 
 ## Overview
 
-This MCP server provides 11 tools to interact with your Strava account, organised into 5 categories:
+This MCP server provides 11 tools to interact with your Strava account, organized into 5 categories:
 
 - Activities (2 tools) - Query and analyze your Strava activities
 - Athlete (1 tool) - Access profile, statistics, and training zones
@@ -43,7 +43,7 @@ Before installation, you need to create a Strava API application:
 
 ### How Authentication Works
 
-1. OAuth Flow - Authorise the app through your browser
+1. OAuth Flow - Authorize the app through your browser
 2. Token Storage - OAuth tokens saved to `.env` file
 3. Auto-Refresh - Tokens automatically refreshed when expired
 4. Persistence - Subsequent runs reuse stored tokens
@@ -64,7 +64,7 @@ Then configure credentials using one of these methods:
 uv run strava-mcp-auth
 ```
 
-This will open your browser to authorise the application and save credentials to `.env`.
+This will open your browser to authorize the application and save credentials to `.env`.
 
 #### Manual Setup
 
@@ -97,7 +97,7 @@ docker run -it --rm \
   -m strava_mcp.scripts.setup_auth
 ```
 
-This will open your browser to authorise the application and save credentials to `.env`.
+This will open your browser to authorize the application and save credentials to `.env`.
 
 #### Manual Setup
 
@@ -159,49 +159,55 @@ Add to your configuration file:
 
 ## Usage
 
-Ask Claude to interact with your Strava data using natural language:
+Ask Claude to interact with your Strava data using natural language. The server provides tools, a resource, and prompt templates to help you get started.
+
+### Quick Start with MCP Prompts
+
+Use built-in prompt templates for common queries (available via prompt suggestions in Claude):
+
+- `analyze-recent-training` - Analyze my training over the past 30 days
+- `segment-performance` - Analyze my performance on a specific segment
+- `activity-deep-dive` - Deep dive into a specific activity
+- `compare-recent-runs` - Compare my recent runs to track progress
+- `training-summary` - Show me a comprehensive training summary
 
 ### Activities
 
 ```
-"Show me my recent runs"
-"Get my runs from the last 30 days"
-"What was my pace and heart rate for activity 12345?"
-"Show me lap splits and heart rate zones for my last long run"
+"Show me my runs from the last 30 days"
+"Get my last long run with lap splits and heart rate zones"
+"Show me the comments and kudos on my half marathon race"
 ```
 
 ### Athlete Profile & Stats
 
 ```
-"Show my running profile and current weight"
-"What are my year-to-date running stats?"
-"Show me my heart rate and power zones"
+"Show my athlete profile with year-to-date stats and training zones"
 ```
+
+*Note: The athlete profile resource (`strava://athlete/profile`) automatically provides ongoing context.*
 
 ### Segments
 
 ```
-"List my starred running segments"
-"Find popular running segments near coordinates 51.5074, -0.1278"
-"Show details for segment 229781 with my effort history"
-"Star segment 229781"
-"Show the leaderboard for this segment"
+"Show me the Hawk Hill segment with my effort history"
+"Find running segments near Golden Gate Park"
+"Show the leaderboard for my favorite climb segment"
 ```
 
 ### Routes
 
 ```
-"Show me all my running routes"
-"Show details for route 54321"
-"Export route 54321 to GPX format"
+"List my routes"
+"Export my Bay Trail route to GPX"
 ```
 
 ### Training Analysis
 
 ```
 "Analyze my training over the past 30 days"
-"Compare activities 12345, 12346, and 12347"
-"Find activities similar to my last long run"
+"Compare my last three 10K runs"
+"Find runs similar to my last tempo workout"
 ```
 
 ## Available Tools
