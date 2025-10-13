@@ -9,14 +9,18 @@ from pydantic import TypeAdapter
 
 from .auth import StravaConfig, refresh_access_token, update_env_tokens
 from .models import (
+    ActivityZone,
     Athlete,
     AthleteStats,
+    Comment,
     DetailedActivity,
     DetailedSegment,
     Lap,
     Route,
     SegmentEffort,
+    SegmentLeaderboard,
     SummaryActivity,
+    SummaryAthlete,
     SummarySegment,
     Zones,
 )
@@ -240,6 +244,42 @@ class StravaClient:
         adapter = TypeAdapter(list[Lap])
         return adapter.validate_python(response.json())
 
+    async def get_activity_zones(self, activity_id: int) -> list[ActivityZone]:
+        """Get zones for a specific activity."""
+        response = await self._request("GET", f"/activities/{activity_id}/zones")
+        adapter = TypeAdapter(list[ActivityZone])
+        return adapter.validate_python(response.json())
+
+    async def get_activity_comments(
+        self,
+        activity_id: int,
+        page: int = 1,
+        per_page: int = 30,
+    ) -> list[Comment]:
+        """Get comments for a specific activity."""
+        response = await self._request(
+            "GET",
+            f"/activities/{activity_id}/comments",
+            params={"page": page, "per_page": per_page},
+        )
+        adapter = TypeAdapter(list[Comment])
+        return adapter.validate_python(response.json())
+
+    async def get_activity_kudoers(
+        self,
+        activity_id: int,
+        page: int = 1,
+        per_page: int = 30,
+    ) -> list[SummaryAthlete]:
+        """Get athletes who gave kudos to a specific activity."""
+        response = await self._request(
+            "GET",
+            f"/activities/{activity_id}/kudos",
+            params={"page": page, "per_page": per_page},
+        )
+        adapter = TypeAdapter(list[SummaryAthlete])
+        return adapter.validate_python(response.json())
+
     # Athlete methods
 
     async def get_athlete(self) -> Athlete:
@@ -332,6 +372,40 @@ class StravaClient:
         )
         adapter = TypeAdapter(list[SegmentEffort])
         return adapter.validate_python(response.json())
+
+    async def get_segment_leaderboard(
+        self,
+        segment_id: int,
+        gender: str | None = None,
+        age_group: str | None = None,
+        weight_class: str | None = None,
+        following: bool | None = None,
+        club_id: int | None = None,
+        date_range: str | None = None,
+        page: int = 1,
+        per_page: int = 30,
+    ) -> SegmentLeaderboard:
+        """Get segment leaderboard with optional filters."""
+        params: dict[str, Any] = {"page": page, "per_page": per_page}
+        if gender:
+            params["gender"] = gender
+        if age_group:
+            params["age_group"] = age_group
+        if weight_class:
+            params["weight_class"] = weight_class
+        if following is not None:
+            params["following"] = following
+        if club_id:
+            params["club_id"] = club_id
+        if date_range:
+            params["date_range"] = date_range
+
+        response = await self._request(
+            "GET",
+            f"/segments/{segment_id}/leaderboard",
+            params=params,
+        )
+        return SegmentLeaderboard(**response.json())
 
     # Route methods
 

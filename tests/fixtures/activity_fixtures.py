@@ -258,3 +258,133 @@ ACTIVITY_STREAMS = {
         "resolution": "high"
     }
 }
+
+ACTIVITY_ZONES = [
+    {
+        "type": "heartrate",
+        "sensor_based": True,
+        "custom_zones": False,
+        "score": 82,
+        "points": 100,
+        "distribution_buckets": [
+            {"min": 0, "max": 142, "time": 1200},
+            {"min": 142, "max": 155, "time": 900},
+            {"min": 155, "max": 162, "time": 600},
+            {"min": 162, "max": 174, "time": 300},
+            {"min": 174, "max": None, "time": 500}
+        ]
+    },
+    {
+        "type": "power",
+        "sensor_based": True,
+        "custom_zones": True,
+        "score": 95,
+        "points": 120,
+        "distribution_buckets": [
+            {"min": 0, "max": 143, "time": 800},
+            {"min": 143, "max": 186, "time": 1000},
+            {"min": 186, "max": 229, "time": 700},
+            {"min": 229, "max": 286, "time": 400},
+            {"min": 286, "max": 343, "time": 200},
+            {"min": 343, "max": 999, "time": 100}
+        ]
+    }
+]
+
+ACTIVITY_COMMENTS = [
+    {
+        "id": 123456789,
+        "activity_id": 12345678987654320,
+        "text": "Great ride! Weather looked perfect.",
+        "athlete": {
+            "id": 987654,
+            "resource_state": 2,
+            "firstname": "John",
+            "lastname": "Doe",
+            "profile_medium": "https://example.com/avatar.jpg",
+            "profile": "https://example.com/avatar.jpg",
+            "city": "San Francisco",
+            "state": "CA",
+            "country": "United States",
+            "sex": "M",
+            "premium": True,
+            "summit": True,
+            "created_at": "2018-01-01T00:00:00.000Z",
+            "updated_at": "2018-01-01T00:00:00.000Z"
+        },
+        "created_at": "2018-02-16T15:23:45.000Z"
+    },
+    {
+        "id": 123456790,
+        "activity_id": 12345678987654320,
+        "text": "Nice work out there!",
+        "athlete": {
+            "id": 987655,
+            "resource_state": 2,
+            "firstname": "Jane",
+            "lastname": "Smith",
+            "profile_medium": "https://example.com/avatar2.jpg",
+            "profile": "https://example.com/avatar2.jpg",
+            "city": "Oakland",
+            "state": "CA",
+            "country": "United States",
+            "sex": "F",
+            "premium": False,
+            "summit": False,
+            "created_at": "2017-01-01T00:00:00.000Z",
+            "updated_at": "2017-01-01T00:00:00.000Z"
+        },
+        "created_at": "2018-02-16T16:45:12.000Z"
+    }
+]
+
+ACTIVITY_KUDOERS = [
+    {
+        "id": 111111,
+        "resource_state": 2,
+        "firstname": "Alice",
+        "lastname": "Johnson",
+        "profile_medium": "https://example.com/alice.jpg",
+        "profile": "https://example.com/alice.jpg",
+        "city": "Berkeley",
+        "state": "CA",
+        "country": "United States",
+        "sex": "F",
+        "premium": True,
+        "summit": True,
+        "created_at": "2016-01-01T00:00:00.000Z",
+        "updated_at": "2016-01-01T00:00:00.000Z"
+    },
+    {
+        "id": 222222,
+        "resource_state": 2,
+        "firstname": "Bob",
+        "lastname": "Williams",
+        "profile_medium": "https://example.com/bob.jpg",
+        "profile": "https://example.com/bob.jpg",
+        "city": "Palo Alto",
+        "state": "CA",
+        "country": "United States",
+        "sex": "M",
+        "premium": False,
+        "summit": False,
+        "created_at": "2015-01-01T00:00:00.000Z",
+        "updated_at": "2015-01-01T00:00:00.000Z"
+    },
+    {
+        "id": 333333,
+        "resource_state": 2,
+        "firstname": "Charlie",
+        "lastname": "Brown",
+        "profile_medium": "https://example.com/charlie.jpg",
+        "profile": "https://example.com/charlie.jpg",
+        "city": None,
+        "state": None,
+        "country": None,
+        "sex": "M",
+        "premium": True,
+        "summit": True,
+        "created_at": "2014-01-01T00:00:00.000Z",
+        "updated_at": "2014-01-01T00:00:00.000Z"
+    }
+]

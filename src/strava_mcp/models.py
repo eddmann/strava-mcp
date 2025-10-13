@@ -503,6 +503,26 @@ class Zones(BaseModel):
     power: PowerZoneRanges | None = None
 
 
+class SegmentLeaderboardEntry(BaseModel):
+    """A row in a segment leaderboard."""
+
+    athlete_name: str
+    elapsed_time: int
+    moving_time: int
+    start_date: datetime
+    start_date_local: datetime
+    rank: int
+
+
+class SegmentLeaderboard(BaseModel):
+    """Segment leaderboard with entries."""
+
+    entry_count: int
+    effort_count: int  # Deprecated, use entry_count
+    kom_type: Literal["kom", "cr"] | None = None
+    entries: list[SegmentLeaderboardEntry]
+
+
 class TokenResponse(BaseModel):
     """OAuth token response."""
 

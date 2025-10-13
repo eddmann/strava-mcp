@@ -118,6 +118,70 @@ class StravaAPIStubber:
             return_value=Response(status_code, text=tcx_data)
         )
 
+    def stub_activity_zones_endpoint(self, activity_id, zones_data, status_code=200):
+        """Stub GET /activities/{id}/zones endpoint."""
+        self.respx_mock.get(f"/activities/{activity_id}/zones").mock(
+            return_value=Response(status_code, json=zones_data)
+        )
+
+    def stub_activity_comments_endpoint(self, activity_id, comments_data, status_code=200, page=None, per_page=None):
+        """Stub GET /activities/{id}/comments endpoint with optional pagination."""
+        if page is not None and per_page is not None:
+            self.respx_mock.get(
+                f"/activities/{activity_id}/comments",
+                params={"page": page, "per_page": per_page}
+            ).mock(return_value=Response(status_code, json=comments_data))
+        else:
+            self.respx_mock.get(f"/activities/{activity_id}/comments").mock(
+                return_value=Response(status_code, json=comments_data)
+            )
+
+    def stub_activity_kudoers_endpoint(self, activity_id, kudoers_data, status_code=200, page=None, per_page=None):
+        """Stub GET /activities/{id}/kudos endpoint with optional pagination."""
+        if page is not None and per_page is not None:
+            self.respx_mock.get(
+                f"/activities/{activity_id}/kudos",
+                params={"page": page, "per_page": per_page}
+            ).mock(return_value=Response(status_code, json=kudoers_data))
+        else:
+            self.respx_mock.get(f"/activities/{activity_id}/kudos").mock(
+                return_value=Response(status_code, json=kudoers_data)
+            )
+
+    def stub_segment_leaderboard_endpoint(
+        self, segment_id, leaderboard_data, status_code=200,
+        gender=None, age_group=None, weight_class=None, following=None,
+        club_id=None, date_range=None, page=None, per_page=None
+    ):
+        """Stub GET /segments/{id}/leaderboard endpoint with optional filters."""
+        params = {}
+        if page is not None:
+            params["page"] = page
+        if per_page is not None:
+            params["per_page"] = per_page
+        if gender is not None:
+            params["gender"] = gender
+        if age_group is not None:
+            params["age_group"] = age_group
+        if weight_class is not None:
+            params["weight_class"] = weight_class
+        if following is not None:
+            params["following"] = following
+        if club_id is not None:
+            params["club_id"] = club_id
+        if date_range is not None:
+            params["date_range"] = date_range
+
+        if params:
+            self.respx_mock.get(
+                f"/segments/{segment_id}/leaderboard",
+                params=params
+            ).mock(return_value=Response(status_code, json=leaderboard_data))
+        else:
+            self.respx_mock.get(f"/segments/{segment_id}/leaderboard").mock(
+                return_value=Response(status_code, json=leaderboard_data)
+            )
+
     def stub_error_response(self, endpoint, method="GET", status_code=404, message="Not Found"):
         """Stub an error response for any endpoint."""
         error_data = {
