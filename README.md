@@ -64,7 +64,7 @@ Then configure credentials using one of these methods:
 uv run strava-mcp-auth
 ```
 
-This will open your browser to authorize the application and save credentials to `.env`.
+This will display an authorization URL to visit in your browser and save credentials to `.env`.
 
 #### Manual Setup
 
@@ -90,18 +90,16 @@ Then configure credentials using one of these methods:
 
 ```bash
 docker run -it --rm \
-  -v "$(pwd):/app" \
-  -w /app \
-  --entrypoint python \
+  -v "/ABSOLUTE/PATH/TO/strava-mcp.env:/app/.env" \
   ghcr.io/eddmann/strava-mcp:latest \
-  -m strava_mcp.scripts.setup_auth
+  python -m strava_mcp.scripts.setup_auth
 ```
 
-This will open your browser to authorize the application and save credentials to `.env`.
+This will display an authorization URL to visit in your browser and save credentials to `strava-mcp.env`.
 
 #### Manual Setup
 
-Create a `.env` file manually in your current directory (see UV manual setup above for format).
+Create a `strava-mcp.env` file manually in your current directory (see UV manual setup above for format).
 
 ### Required OAuth Scopes
 
@@ -149,7 +147,7 @@ Add to your configuration file:
         "-i",
         "--rm",
         "-v",
-        "/ABSOLUTE/PATH/TO/strava-mcp/.env:/app/.env",
+        "/ABSOLUTE/PATH/TO/strava-mcp.env:/app/.env",
         "ghcr.io/eddmann/strava-mcp:latest"
       ]
     }
