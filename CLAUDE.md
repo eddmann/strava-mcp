@@ -95,6 +95,8 @@ make docker/run
 
 - Initializes FastMCP server instance
 - Registers all 11 tools
+- Registers 3 MCP resources for ongoing context
+- Registers 5 MCP prompts for common queries
 - Main entry point uses stdio transport for MCP communication
 
 **Authentication & Configuration** (`src/strava_mcp/auth.py`)
@@ -242,6 +244,28 @@ All tools return structured JSON with this format:
 - Both machine-readable and human-friendly
 - Enables computational analysis
 - Consistent structure across all tools
+
+### MCP Resources
+
+The server provides 3 resources for ongoing context:
+
+- **`strava://athlete/profile`** - Current athlete profile with zones and basic info
+- **`strava://athlete/stats`** - Athlete statistics summary (recent, YTD, all-time)
+- **`strava://activities/recent`** - Last 20 activities for context
+
+These resources are automatically available to the LLM without explicit tool calls, providing continuous context about the athlete's profile, training zones, and recent activity history.
+
+### MCP Prompts
+
+The server provides 5 prompt templates for common queries:
+
+- **`analyze_recent_training`** - Analyze training over a time period (default: 30 days)
+- **`segment_performance`** - Analyze performance on a specific segment
+- **`activity_deep_dive`** - Comprehensive analysis of a specific activity
+- **`compare_recent_runs`** - Compare recent runs to track progress
+- **`training_summary`** - Comprehensive training overview
+
+These prompts guide the LLM on how to effectively use the tools to answer common questions, improving discoverability and consistency.
 
 ### Testing
 

@@ -17,6 +17,11 @@ This MCP server provides 11 tools to interact with your Strava account, organise
 - Routes (2 tools) - Manage and export routes
 - Analysis (3 tools) - Training insights, comparison, and similarity search
 
+Additionally, the server provides:
+
+- **3 MCP Resources** - Ongoing context (athlete profile, stats, recent activities)
+- **5 MCP Prompts** - Templates for common queries (training analysis, segment performance, etc.)
+
 ## Prerequisites
 
 - Python 3.11+ and [uv](https://github.com/astral-sh/uv), OR
