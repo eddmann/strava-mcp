@@ -375,3 +375,93 @@ async def list_segment_efforts(
         return f"Error: {e.message}"
     except Exception as e:
         return f"Unexpected error: {str(e)}"
+
+
+async def get_segment_leaderboard(
+    segment_id: Annotated[int, "The ID of the segment"],
+    gender: Annotated[str | None, "Filter by gender: 'M' or 'F'"] = None,
+    age_group: Annotated[
+        str | None,
+        "Filter by age group: '0_19', '20_24', '25_34', '35_44', '45_54', '55_64', '65_69', '70_74', '75_plus'",
+    ] = None,
+    weight_class: Annotated[
+        str | None,
+        "Filter by weight class (lbs): '0_124', '125_149', '150_164', '165_179', '180_199', '200_224', '225_249', '250_plus' or (kg): '0_54', '55_64', '65_74', '75_84', '85_94', '95_104', '105_114', '115_plus'",
+    ] = None,
+    following: Annotated[bool | None, "Filter by athletes you follow"] = None,
+    club_id: Annotated[int | None, "Filter by club ID"] = None,
+    date_range: Annotated[
+        str | None,
+        "Filter by date range: 'this_year', 'this_month', 'this_week', 'today'",
+    ] = None,
+    page: Annotated[int, "Page number (default: 1)"] = 1,
+    per_page: Annotated[int, "Number of entries per page (default: 30)"] = 30,
+) -> str:
+    """Get segment leaderboard with optional filters."""
+    config = load_config()
+
+    if not validate_credentials(config):
+        return (
+            "Error: Strava credentials not configured. "
+            "Please run 'strava-mcp-auth' to set up authentication."
+        )
+
+    try:
+        async with StravaClient(config) as client:
+            leaderboard = await client.get_segment_leaderboard(
+                segment_id=segment_id,
+                gender=gender,
+                age_group=age_group,
+                weight_class=weight_class,
+                following=following,
+                club_id=club_id,
+                date_range=date_range,
+                page=page,
+                per_page=per_page,
+            )
+
+            if not leaderboard.entries:
+                filters_applied = any(
+                    [gender, age_group, weight_class, following, club_id, date_range]
+                )
+                if filters_applied:
+                    return f"No leaderboard entries found for segment {segment_id} with the applied filters."
+                return f"No leaderboard entries found for segment {segment_id}."
+
+            # Build filter description
+            filters: list[str] = []
+            if gender:
+                filters.append(f"Gender: {gender}")
+            if age_group:
+                filters.append(f"Age: {age_group.replace('_', '-')}")
+            if weight_class:
+                filters.append(f"Weight: {weight_class.replace('_', '-')}")
+            if following:
+                filters.append("Following only")
+            if club_id:
+                filters.append(f"Club ID: {club_id}")
+            if date_range:
+                filters.append(f"Period: {date_range.replace('_', ' ')}")
+
+            output = [f"Segment {segment_id} Leaderboard\n"]
+            if filters:
+                output.append(f"Filters: {', '.join(filters)}")
+            output.append(f"Total Entries: {leaderboard.entry_count}")
+            if leaderboard.kom_type:
+                output.append(f"Type: {leaderboard.kom_type.upper()}")
+            output.append(f"\nShowing {len(leaderboard.entries)} entries:\n")
+
+            for entry in leaderboard.entries:
+                output.append(f"{entry.rank}. {entry.athlete_name}")
+                output.append(f"   Time: {format_duration(entry.elapsed_time)}")
+                if entry.moving_time != entry.elapsed_time:
+                    output.append(f"   Moving Time: {format_duration(entry.moving_time)}")
+                output.append(f"   Date: {format_datetime(entry.start_date_local)}")
+                output.append("")
+
+            return "\n".join(output)
+
+    except StravaAPIError as e:
+        return f"Error: {e.message}"
+    except Exception as e:
+        return f"Unexpected error: {str(e)}"

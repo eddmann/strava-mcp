@@ -11,9 +11,12 @@ mcp = FastMCP("Strava")
 
 # Import and register all tools
 from .tools.activities import (
+    get_activity_comments,
     get_activity_details,
+    get_activity_kudoers,
     get_activity_laps,
     get_activity_streams,
+    get_activity_zones,
     get_all_activities,
     get_recent_activities,
 )
@@ -28,6 +31,7 @@ from .tools.segments import (
     explore_segments,
     get_segment,
     get_segment_effort,
+    get_segment_leaderboard,
     list_segment_efforts,
     list_starred_segments,
     star_segment,
@@ -39,6 +43,9 @@ mcp.tool()(get_all_activities)
 mcp.tool()(get_activity_details)
 mcp.tool()(get_activity_streams)
 mcp.tool()(get_activity_laps)
+mcp.tool()(get_activity_zones)
+mcp.tool()(get_activity_comments)
+mcp.tool()(get_activity_kudoers)
 
 # Register athlete tools
 mcp.tool()(get_athlete_profile)
@@ -52,6 +59,7 @@ mcp.tool()(get_segment)
 mcp.tool()(star_segment)
 mcp.tool()(get_segment_effort)
 mcp.tool()(list_segment_efforts)
+mcp.tool()(get_segment_leaderboard)
 
 # Register route tools
 mcp.tool()(list_athlete_routes)

@@ -341,3 +341,169 @@ async def get_activity_laps(
         return f"Error: {e.message}"
     except Exception as e:
         return f"Unexpected error: {str(e)}"
+
+
+async def get_activity_zones(
+    activity_id: Annotated[int, "The ID of the activity"],
+) -> str:
+    """Get heart rate and power zones for a specific activity."""
+    config = load_config()
+
+    if not validate_credentials(config):
+        return (
+            "Error: Strava credentials not configured. "
+            "Please run 'strava-mcp-auth' to set up authentication."
+        )
+
+    try:
+        async with StravaClient(config) as client:
+            zones = await client.get_activity_zones(activity_id)
+
+            if not zones:
+                return "No zone data available for this activity."
+
+            output = [f"Activity {activity_id} Zone Analysis:\n"]
+
+            for zone in zones:
+                if zone.type == "heartrate":
+                    output.append("=== HEART RATE ZONES ===")
+                    output.append(f"Sensor Based: {'Yes' if zone.sensor_based else 'No'}")
+                    output.append(f"Custom Zones: {'Yes' if zone.custom_zones else 'No'}")
+                    if zone.score:
+                        output.append(f"Score: {zone.score}")
+                    if zone.points:
+                        output.append(f"Points: {zone.points}")
+                    output.append("")
+
+                    if zone.distribution_buckets:
+                        output.append("Time in Zones:")
+                        for i, bucket in enumerate(zone.distribution_buckets, 1):
+                            min_hr = bucket.min if bucket.min is not None else "N/A"
+                            max_hr = bucket.max if bucket.max is not None else "∞"
+                            time_min = bucket.time // 60 if bucket.time else 0
+                            time_sec = bucket.time % 60 if bucket.time else 0
+                            output.append(
+                                f"  Zone {i} ({min_hr}-{max_hr} bpm): {time_min}:{time_sec:02d}"
+                            )
+                    output.append("")
+
+                elif zone.type == "power":
+                    output.append("=== POWER ZONES ===")
+                    output.append(f"Sensor Based: {'Yes' if zone.sensor_based else 'No'}")
+                    output.append(f"Custom Zones: {'Yes' if zone.custom_zones else 'No'}")
+                    if zone.score:
+                        output.append(f"Score: {zone.score}")
+                    if zone.points:
+                        output.append(f"Points: {zone.points}")
+                    output.append("")
+
+                    if zone.distribution_buckets:
+                        output.append("Time in Zones:")
+                        for i, bucket in enumerate(zone.distribution_buckets, 1):
+                            min_power = bucket.min if bucket.min is not None else "N/A"
+                            max_power = bucket.max if bucket.max is not None else "∞"
+                            time_min = bucket.time // 60 if bucket.time else 0
+                            time_sec = bucket.time % 60 if bucket.time else 0
+                            output.append(
+                                f"  Zone {i} ({min_power}-{max_power}W): {time_min}:{time_sec:02d}"
+                            )
+                    output.append("")
+
+            return "\n".join(output)
+
+    except StravaAPIError as e:
+        return f"Error: {e.message}"
+    except Exception as e:
+        return f"Unexpected error: {str(e)}"
+
+
+async def get_activity_comments(
+    activity_id: Annotated[int, "The ID of the activity"],
+    page: Annotated[int, "Page number (default: 1)"] = 1,
+    per_page: Annotated[int, "Number of comments per page (default: 30)"] = 30,
+) -> str:
+    """Get comments on a specific activity."""
+    config = load_config()
+
+    if not validate_credentials(config):
+        return (
+            "Error: Strava credentials not configured. "
+            "Please run 'strava-mcp-auth' to set up authentication."
+        )
+
+    try:
+        async with StravaClient(config) as client:
+            comments = await client.get_activity_comments(
+                activity_id=activity_id, page=page, per_page=per_page
+            )
+
+            if not comments:
+                return f"No comments found for activity {activity_id}."
+
+            output = [f"Found {len(comments)} comments on activity {activity_id}:\n"]
+
+            for i, comment in enumerate(comments, 1):
+                athlete_name = "Unknown"
+                if comment.athlete:
+                    athlete_name = f"{comment.athlete.firstname} {comment.athlete.lastname}"
+
+                output.append(f"{i}. {athlete_name}")
+                if comment.created_at:
+                    output.append(f"   {format_datetime(comment.created_at)}")
+                if comment.text:
+                    # Wrap long comments
+                    text = comment.text.replace("\n", "\n   ")
+                    output.append(f'   "{text}"')
+                output.append("")
+
+            return "\n".join(output)
+
+    except StravaAPIError as e:
+        return f"Error: {e.message}"
+    except Exception as e:
+        return f"Unexpected error: {str(e)}"
+
+
+async def get_activity_kudoers(
+    activity_id: Annotated[int, "The ID of the activity"],
+    page: Annotated[int, "Page number (default: 1)"] = 1,
+    per_page: Annotated[int, "Number of kudoers per page (default: 30)"] = 30,
+) -> str:
+    """Get athletes who gave kudos to a specific activity."""
+    config = load_config()
+
+    if not validate_credentials(config):
+        return (
+            "Error: Strava credentials not configured. "
+            "Please run 'strava-mcp-auth' to set up authentication."
+        )
+
+    try:
+        async with StravaClient(config) as client:
+            kudoers = await client.get_activity_kudoers(
+                activity_id=activity_id, page=page, per_page=per_page
+            )
+
+            if not kudoers:
+                return f"No kudos found for activity {activity_id}."
+
+            output = [f"Found {len(kudoers)} kudos on activity {activity_id}:\n"]
+
+            for i, athlete in enumerate(kudoers, 1):
+                name = f"{athlete.firstname} {athlete.lastname}"
+                location_parts = filter(None, [athlete.city, athlete.state, athlete.country])
+                location = ", ".join(location_parts) if location_parts else ""
+
+                output.append(f"{i}. {name}")
+                if location:
+                    output.append(f"   {location}")
+                if athlete.premium:
+                    output.append("   Premium Member")
+                output.append("")
+
+            return "\n".join(output)
+
+    except StravaAPIError as e:
+        return f"Error: {e.message}"
+    except Exception as e:
+        return f"Unexpected error: {str(e)}"

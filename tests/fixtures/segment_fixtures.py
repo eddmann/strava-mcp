@@ -172,3 +172,51 @@ SEGMENT_EFFORTS_LIST = [
         "pr_rank": 2
     }
 ]
+
+SEGMENT_LEADERBOARD = {
+    "entry_count": 5,
+    "effort_count": 5,
+    "kom_type": "kom",
+    "entries": [
+        {
+            "athlete_name": "Jim W.",
+            "elapsed_time": 291,
+            "moving_time": 291,
+            "start_date": "2018-12-01T12:00:00.000Z",
+            "start_date_local": "2018-12-01T04:00:00.000Z",
+            "rank": 1
+        },
+        {
+            "athlete_name": "Chris D.",
+            "elapsed_time": 295,
+            "moving_time": 295,
+            "start_date": "2018-11-15T14:30:00.000Z",
+            "start_date_local": "2018-11-15T06:30:00.000Z",
+            "rank": 2
+        },
+        {
+            "athlete_name": "Sarah M.",
+            "elapsed_time": 302,
+            "moving_time": 300,
+            "start_date": "2018-10-20T10:15:00.000Z",
+            "start_date_local": "2018-10-20T02:15:00.000Z",
+            "rank": 3
+        },
+        {
+            "athlete_name": "Mike R.",
+            "elapsed_time": 310,
+            "moving_time": 308,
+            "start_date": "2018-09-10T16:00:00.000Z",
+            "start_date_local": "2018-09-10T08:00:00.000Z",
+            "rank": 4
+        },
+        {
+            "athlete_name": "Emily T.",
+            "elapsed_time": 315,
+            "moving_time": 312,
+            "start_date": "2018-08-05T08:45:00.000Z",
+            "start_date_local": "2018-08-05T00:45:00.000Z",
+            "rank": 5
+        }
+    ]
+}

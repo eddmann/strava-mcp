@@ -8,6 +8,7 @@ from strava_mcp.tools.segments import (
     explore_segments,
     get_segment,
     get_segment_effort,
+    get_segment_leaderboard,
     list_segment_efforts,
     list_starred_segments,
     star_segment,
@@ -18,6 +19,7 @@ from tests.fixtures.segment_fixtures import (
     EXPLORE_SEGMENTS_RESPONSE,
     SEGMENT_EFFORT,
     SEGMENT_EFFORTS_LIST,
+    SEGMENT_LEADERBOARD,
     SUMMARY_SEGMENT,
 )
 from tests.stubs.strava_api_stub import StravaAPIStubber
@@ -429,3 +431,203 @@ class TestListSegmentEfforts:
         result = await list_segment_efforts(segment_id)
 
         assert "No efforts found for this segment." in result
+
+
+class TestGetSegmentLeaderboard:
+    """Test get_segment_leaderboard tool."""
+
+    @patch('strava_mcp.tools.segments.load_config')
+    @patch('strava_mcp.tools.segments.validate_credentials')
+    async def test_get_segment_leaderboard_success(self, mock_validate, mock_load_config, mock_config, stub_api):
+        """Test successful segment leaderboard retrieval."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        segment_id = 229781
+        stub_api.stub_segment_leaderboard_endpoint(segment_id, SEGMENT_LEADERBOARD)
+
+        result = await get_segment_leaderboard(segment_id)
+
+        assert f"Segment {segment_id} Leaderboard" in result
+        assert "Total Entries: 5" in result
+        assert "Type: KOM" in result
+        assert "Showing 5 entries:" in result
+        assert "1. Jim W." in result
+        assert "2. Chris D." in result
+        assert "3. Sarah M." in result
+        assert "Time: 4m 51s" in result  # 291 seconds
+
+    @patch('strava_mcp.tools.segments.load_config')
+    @patch('strava_mcp.tools.segments.validate_credentials')
+    async def test_get_segment_leaderboard_with_gender_filter(self, mock_validate, mock_load_config, mock_config, stub_api):
+        """Test segment leaderboard with gender filter."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        segment_id = 229781
+        stub_api.stub_segment_leaderboard_endpoint(segment_id, SEGMENT_LEADERBOARD, gender="M")
+
+        result = await get_segment_leaderboard(segment_id, gender="M")
+
+        assert "Filters: Gender: M" in result
+
+    @patch('strava_mcp.tools.segments.load_config')
+    @patch('strava_mcp.tools.segments.validate_credentials')
+    async def test_get_segment_leaderboard_with_age_group_filter(self, mock_validate, mock_load_config, mock_config, stub_api):
+        """Test segment leaderboard with age group filter."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        segment_id = 229781
+        stub_api.stub_segment_leaderboard_endpoint(segment_id, SEGMENT_LEADERBOARD, age_group="25_34")
+
+        result = await get_segment_leaderboard(segment_id, age_group="25_34")
+
+        assert "Filters: Age: 25-34" in result
+
+    @patch('strava_mcp.tools.segments.load_config')
+    @patch('strava_mcp.tools.segments.validate_credentials')
+    async def test_get_segment_leaderboard_with_multiple_filters(self, mock_validate, mock_load_config, mock_config, stub_api):
+        """Test segment leaderboard with multiple filters."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        segment_id = 229781
+        stub_api.stub_segment_leaderboard_endpoint(
+            segment_id, SEGMENT_LEADERBOARD,
+            gender="F", age_group="35_44", date_range="this_year"
+        )
+
+        result = await get_segment_leaderboard(
+            segment_id,
+            gender="F",
+            age_group="35_44",
+            date_range="this_year"
+        )
+
+        assert "Filters:" in result
+        assert "Gender: F" in result
+        assert "Age: 35-44" in result
+        assert "Period: this year" in result
+
+    @patch('strava_mcp.tools.segments.load_config')
+    @patch('strava_mcp.tools.segments.validate_credentials')
+    async def test_get_segment_leaderboard_with_weight_class(self, mock_validate, mock_load_config, mock_config, stub_api):
+        """Test segment leaderboard with weight class filter."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        segment_id = 229781
+        stub_api.stub_segment_leaderboard_endpoint(segment_id, SEGMENT_LEADERBOARD, weight_class="75_84")
+
+        result = await get_segment_leaderboard(segment_id, weight_class="75_84")
+
+        assert "Filters: Weight: 75-84" in result
+
+    @patch('strava_mcp.tools.segments.load_config')
+    @patch('strava_mcp.tools.segments.validate_credentials')
+    async def test_get_segment_leaderboard_with_following_filter(self, mock_validate, mock_load_config, mock_config, stub_api):
+        """Test segment leaderboard with following filter."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        segment_id = 229781
+        stub_api.stub_segment_leaderboard_endpoint(segment_id, SEGMENT_LEADERBOARD, following=True)
+
+        result = await get_segment_leaderboard(segment_id, following=True)
+
+        assert "Filters: Following only" in result
+
+    @patch('strava_mcp.tools.segments.load_config')
+    @patch('strava_mcp.tools.segments.validate_credentials')
+    async def test_get_segment_leaderboard_with_club_filter(self, mock_validate, mock_load_config, mock_config, stub_api):
+        """Test segment leaderboard with club ID filter."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        segment_id = 229781
+        club_id = 12345
+        stub_api.stub_segment_leaderboard_endpoint(segment_id, SEGMENT_LEADERBOARD, club_id=club_id)
+
+        result = await get_segment_leaderboard(segment_id, club_id=club_id)
+
+        assert f"Filters: Club ID: {club_id}" in result
+
+    @patch('strava_mcp.tools.segments.load_config')
+    @patch('strava_mcp.tools.segments.validate_credentials')
+    async def test_get_segment_leaderboard_with_pagination(self, mock_validate, mock_load_config, mock_config, stub_api):
+        """Test segment leaderboard with pagination."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        segment_id = 229781
+        stub_api.stub_segment_leaderboard_endpoint(segment_id, SEGMENT_LEADERBOARD, page=2, per_page=10)
+
+        result = await get_segment_leaderboard(segment_id, page=2, per_page=10)
+
+        assert f"Segment {segment_id} Leaderboard" in result
+
+    @patch('strava_mcp.tools.segments.load_config')
+    @patch('strava_mcp.tools.segments.validate_credentials')
+    async def test_get_segment_leaderboard_empty(self, mock_validate, mock_load_config, mock_config, stub_api):
+        """Test segment leaderboard with no entries."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        segment_id = 229781
+        empty_leaderboard = {
+            "entry_count": 0,
+            "effort_count": 0,
+            "kom_type": "kom",
+            "entries": []
+        }
+        stub_api.stub_segment_leaderboard_endpoint(segment_id, empty_leaderboard)
+
+        result = await get_segment_leaderboard(segment_id)
+
+        assert f"No leaderboard entries found for segment {segment_id}." in result
+
+    @patch('strava_mcp.tools.segments.load_config')
+    @patch('strava_mcp.tools.segments.validate_credentials')
+    async def test_get_segment_leaderboard_empty_with_filters(self, mock_validate, mock_load_config, mock_config, stub_api):
+        """Test segment leaderboard with no entries when filters applied."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        segment_id = 229781
+        empty_leaderboard = {
+            "entry_count": 0,
+            "effort_count": 0,
+            "kom_type": "kom",
+            "entries": []
+        }
+        stub_api.stub_segment_leaderboard_endpoint(segment_id, empty_leaderboard, gender="F")
+
+        result = await get_segment_leaderboard(segment_id, gender="F")
+
+        assert f"No leaderboard entries found for segment {segment_id} with the applied filters." in result
+
+    @patch('strava_mcp.tools.segments.load_config')
+    @patch('strava_mcp.tools.segments.validate_credentials')
+    async def test_get_segment_leaderboard_not_authenticated(self, mock_validate, mock_load_config, mock_config):
+        """Test segment leaderboard when not authenticated."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = False
+
+        result = await get_segment_leaderboard(229781)
+
+        assert "Error: Strava credentials not configured" in result
+
+    @patch('strava_mcp.tools.segments.load_config')
+    @patch('strava_mcp.tools.segments.validate_credentials')
+    async def test_get_segment_leaderboard_not_found(self, mock_validate, mock_load_config, mock_config, stub_api):
+        """Test segment leaderboard with non-existent segment."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        segment_id = 999999
+        stub_api.stub_error_response(f"/segments/{segment_id}/leaderboard", status_code=404)
+
+        result = await get_segment_leaderboard(segment_id)
+
+        assert "Error:" in result
