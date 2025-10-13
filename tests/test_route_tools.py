@@ -360,7 +360,7 @@ class TestExportRoute:
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
-        result = await export_route(987654, format="invalid")
+        result = await export_route(987654, format="invalid")  # type: ignore[arg-type]
         data = json.loads(result)
 
         assert "error" in data

@@ -24,14 +24,14 @@ from .formatters import (
 from .models import MeasurementPreference
 
 
-def _convert_datetimes(obj: Any) -> str | dict[str, Any] | list[Any] | Any:
+def _convert_datetimes(obj: Any) -> Any:  # type: ignore[misc]
     """Recursively convert datetime objects to ISO strings."""
     if isinstance(obj, datetime):
         return obj.isoformat()
     elif isinstance(obj, dict):
-        return {str(k): _convert_datetimes(v) for k, v in obj.items()}
+        return {str(k): _convert_datetimes(v) for k, v in obj.items()}  # type: ignore[misc]
     elif isinstance(obj, list):
-        return [_convert_datetimes(item) for item in obj]
+        return [_convert_datetimes(item) for item in obj]  # type: ignore[misc]
     return obj
 
 
@@ -322,9 +322,7 @@ class ResponseBuilder:
         if hr_zones := zones.get("heart_rate"):
             zone_list: list[dict[str, Any]] = []
             for zone in hr_zones.get("zones", []):
-                zone_list.append(
-                    {"min": zone.get("min"), "max": zone.get("max")}
-                )
+                zone_list.append({"min": zone.get("min"), "max": zone.get("max")})
             formatted["heart_rate"] = {
                 "custom_zones": hr_zones.get("custom_zones", False),
                 "zones": zone_list,
@@ -334,8 +332,7 @@ class ResponseBuilder:
         if power_zones := zones.get("power"):
             power_zone_list: list[dict[str, Any]] = []
             for zone in power_zones.get("zones", []):
-                power_zone_list.append(
-                    {"min": zone.get("min"), "max": zone.get("max")})
+                power_zone_list.append({"min": zone.get("min"), "max": zone.get("max")})
             formatted["power"] = {
                 "zones": power_zone_list,
             }
@@ -360,8 +357,7 @@ class ResponseBuilder:
 
         total_distance = sum(a.get("distance", 0) for a in activities)
         total_time = sum(a.get("moving_time", 0) for a in activities)
-        total_elevation = sum(a.get("total_elevation_gain", 0)
-                              for a in activities)
+        total_elevation = sum(a.get("total_elevation_gain", 0) for a in activities)
 
         aggregated: dict[str, Any] = {
             "count": len(activities),

@@ -3,7 +3,7 @@
 This module provides route query and export tools with structured JSON output.
 """
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from ..auth import load_config, validate_credentials
 from ..client import StravaAPIError, StravaClient
@@ -120,7 +120,7 @@ async def _get_single_route(
 
     # Segments
     if route.segments:
-        route_data["segments"] = [
+        route_data["segments"] = [  # type: ignore[assignment]
             {
                 "id": seg.id,
                 "name": seg.name,
@@ -139,7 +139,7 @@ async def _get_single_route(
             for seg in route.segments
         ]
 
-    data = {"route": route_data}
+    data: dict[str, Any] = {"route": route_data}
 
     metadata = {
         "query_type": "single_route",
@@ -153,7 +153,7 @@ async def _list_routes(client: StravaClient, limit: int, unit: MeasurementPrefer
     """List all routes."""
     routes = await client.list_athlete_routes(page=1, per_page=limit)
 
-    formatted_routes = []
+    formatted_routes: list[dict[str, Any]] = []
     for route in routes[:limit]:
         formatted_routes.append(
             {
@@ -179,12 +179,12 @@ async def _list_routes(client: StravaClient, limit: int, unit: MeasurementPrefer
             }
         )
 
-    data = {
+    data: dict[str, Any] = {
         "routes": formatted_routes,
         "count": len(formatted_routes),
     }
 
-    metadata = {
+    metadata: dict[str, Any] = {
         "query_type": "list_routes",
         "count": len(formatted_routes),
     }

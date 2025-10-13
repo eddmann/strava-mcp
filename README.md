@@ -17,8 +17,8 @@ This MCP server provides 11 tools to interact with your Strava account, organise
 
 Additionally, the server provides:
 
-- **3 MCP Resources** - Ongoing context (athlete profile, stats, recent activities)
-- **5 MCP Prompts** - Templates for common queries (training analysis, segment performance, etc.)
+- **1 MCP Resource** - Athlete profile with stats and zones for ongoing context
+- **5 MCP Prompts** - Templates for common queries (training analysis, segment performance, activity analysis, run comparison, training summary)
 
 ## Prerequisites
 
@@ -242,6 +242,30 @@ Ask Claude to interact with your Strava data using natural language:
 | `compare-activities`      | Compare 2-5 activities side-by-side                                      |
 | `find-similar-activities` | Find activities similar to a reference activity for progress tracking    |
 
+## MCP Resources
+
+Resources provide ongoing context to the LLM without requiring explicit tool calls:
+
+| Resource                     | Description                                                 |
+| ---------------------------- | ----------------------------------------------------------- |
+| `strava://athlete/profile`   | Complete athlete profile with recent stats, zones, and gear |
+
+## MCP Prompts
+
+Prompt templates for common queries (accessible via prompt suggestion in Claude):
+
+| Prompt                    | Description                                              |
+| ------------------------- | -------------------------------------------------------- |
+| `analyze-recent-training` | Comprehensive training analysis over a specified period  |
+| `segment-performance`     | Detailed segment performance analysis                    |
+| `activity-deep-dive`      | Deep dive into a specific activity with all metrics      |
+| `compare-recent-runs`     | Compare recent runs to identify trends and improvements  |
+| `training-summary`        | Comprehensive training overview with recommendations     |
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details
+
+## Disclaimer
+
+This project is not affiliated with, endorsed by, or sponsored by Strava, Inc. All product names, logos, and brands are property of their respective owners.
