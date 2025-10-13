@@ -41,23 +41,11 @@ mcp.tool()(find_similar_activities)
 # MCP Resources - Provide ongoing context
 @mcp.resource("strava://athlete/profile")
 async def athlete_profile_resource() -> str:
-    """Current athlete profile with zones and basic info."""
-    result = await get_athlete_profile(include_stats=False, include_zones=True)
-    return result
-
-
-@mcp.resource("strava://athlete/stats")
-async def athlete_stats_resource() -> str:
-    """Athlete statistics summary (recent, YTD, all-time)."""
-    result = await get_athlete_profile(include_stats=True, include_zones=False, stats_period="all")
-    return result
-
-
-@mcp.resource("strava://activities/recent")
-async def recent_activities_resource() -> str:
-    """Last 20 activities for context."""
-    result = await query_activities(
-        time_range="recent", include_details=False, include_streams=None, limit=20
+    """Complete athlete profile with stats, zones, and gear for context."""
+    result = await get_athlete_profile(
+        include_stats=True,
+        include_zones=True,
+        stats_period="recent"  # Recent stats to keep context window manageable
     )
     return result
 
