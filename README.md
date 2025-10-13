@@ -190,8 +190,8 @@ Use built-in prompt templates for common queries (available via prompt suggestio
 ### Segments
 
 ```
-"Show me the Hawk Hill segment with my effort history"
-"Find running segments near Golden Gate Park"
+"Show me the Box Hill segment with my effort history"
+"Find running segments near Hyde Park"
 "Show the leaderboard for my favorite climb segment"
 ```
 
@@ -199,7 +199,7 @@ Use built-in prompt templates for common queries (available via prompt suggestio
 
 ```
 "List my routes"
-"Export my Bay Trail route to GPX"
+"Export my Richmond Park route to GPX"
 ```
 
 ### Training Analysis
