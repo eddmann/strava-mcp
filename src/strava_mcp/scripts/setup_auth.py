@@ -1,7 +1,6 @@
 """Interactive OAuth setup script for Strava MCP."""
 
 import asyncio
-import webbrowser
 from pathlib import Path
 
 import httpx
@@ -52,14 +51,9 @@ def main():
         f"&scope={scopes}"
     )
 
-    print(f"\nAuthorization URL:\n{auth_url}\n")
-    print("Opening browser for authorization...")
-
-    try:
-        webbrowser.open(auth_url)
-    except Exception:
-        print("Could not open browser automatically.")
-
+    print("Please visit this URL to authorize the application:")
+    print()
+    print(auth_url)
     print()
     print("After authorizing, you will be redirected to a localhost URL.")
     print("The URL will look like: http://localhost/?state=&code=XXXXX&scope=...")
