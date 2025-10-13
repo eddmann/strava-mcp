@@ -135,7 +135,7 @@ class TestQueryRoutes:
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
         stub_api.stub_routes_endpoint(athlete_id, ROUTE_LIST)
 
-        result = await query_routes(list_all=True)
+        result = await query_routes()
         data = json.loads(result)
 
         # Check structure
@@ -191,7 +191,7 @@ class TestQueryRoutes:
         routes = [ROUTE_LIST[0] for _ in range(50)]
         stub_api.stub_routes_endpoint(athlete_id, routes)
 
-        result = await query_routes(list_all=True, limit=10)
+        result = await query_routes(limit=10)
         data = json.loads(result)
 
         # Should return max 10 routes
@@ -229,7 +229,7 @@ class TestQueryRoutes:
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
         stub_api.stub_routes_endpoint(athlete_id, [])
 
-        result = await query_routes(list_all=True)
+        result = await query_routes()
         data = json.loads(result)
 
         assert data["data"]["count"] == 0
