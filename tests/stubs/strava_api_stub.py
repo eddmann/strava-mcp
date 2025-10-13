@@ -12,9 +12,7 @@ class StravaAPIStubber:
 
     def stub_athlete_endpoint(self, athlete_data, status_code=200):
         """Stub GET /athlete endpoint."""
-        self.respx_mock.get("/athlete").mock(
-            return_value=Response(status_code, json=athlete_data)
-        )
+        self.respx_mock.get("/athlete").mock(return_value=Response(status_code, json=athlete_data))
 
     def stub_athlete_stats_endpoint(self, athlete_id, stats_data, status_code=200):
         """Stub GET /athletes/{id}/stats endpoint."""
@@ -32,8 +30,7 @@ class StravaAPIStubber:
         """Stub GET /athlete/activities endpoint with optional pagination."""
         if page is not None and per_page is not None:
             self.respx_mock.get(
-                "/athlete/activities",
-                params={"page": page, "per_page": per_page}
+                "/athlete/activities", params={"page": page, "per_page": per_page}
             ).mock(return_value=Response(status_code, json=activities_data))
         else:
             self.respx_mock.get("/athlete/activities").mock(
@@ -124,24 +121,26 @@ class StravaAPIStubber:
             return_value=Response(status_code, json=zones_data)
         )
 
-    def stub_activity_comments_endpoint(self, activity_id, comments_data, status_code=200, page=None, per_page=None):
+    def stub_activity_comments_endpoint(
+        self, activity_id, comments_data, status_code=200, page=None, per_page=None
+    ):
         """Stub GET /activities/{id}/comments endpoint with optional pagination."""
         if page is not None and per_page is not None:
             self.respx_mock.get(
-                f"/activities/{activity_id}/comments",
-                params={"page": page, "per_page": per_page}
+                f"/activities/{activity_id}/comments", params={"page": page, "per_page": per_page}
             ).mock(return_value=Response(status_code, json=comments_data))
         else:
             self.respx_mock.get(f"/activities/{activity_id}/comments").mock(
                 return_value=Response(status_code, json=comments_data)
             )
 
-    def stub_activity_kudoers_endpoint(self, activity_id, kudoers_data, status_code=200, page=None, per_page=None):
+    def stub_activity_kudoers_endpoint(
+        self, activity_id, kudoers_data, status_code=200, page=None, per_page=None
+    ):
         """Stub GET /activities/{id}/kudos endpoint with optional pagination."""
         if page is not None and per_page is not None:
             self.respx_mock.get(
-                f"/activities/{activity_id}/kudos",
-                params={"page": page, "per_page": per_page}
+                f"/activities/{activity_id}/kudos", params={"page": page, "per_page": per_page}
             ).mock(return_value=Response(status_code, json=kudoers_data))
         else:
             self.respx_mock.get(f"/activities/{activity_id}/kudos").mock(
@@ -149,9 +148,18 @@ class StravaAPIStubber:
             )
 
     def stub_segment_leaderboard_endpoint(
-        self, segment_id, leaderboard_data, status_code=200,
-        gender=None, age_group=None, weight_class=None, following=None,
-        club_id=None, date_range=None, page=None, per_page=None
+        self,
+        segment_id,
+        leaderboard_data,
+        status_code=200,
+        gender=None,
+        age_group=None,
+        weight_class=None,
+        following=None,
+        club_id=None,
+        date_range=None,
+        page=None,
+        per_page=None,
     ):
         """Stub GET /segments/{id}/leaderboard endpoint with optional filters."""
         params = {}
@@ -173,10 +181,9 @@ class StravaAPIStubber:
             params["date_range"] = date_range
 
         if params:
-            self.respx_mock.get(
-                f"/segments/{segment_id}/leaderboard",
-                params=params
-            ).mock(return_value=Response(status_code, json=leaderboard_data))
+            self.respx_mock.get(f"/segments/{segment_id}/leaderboard", params=params).mock(
+                return_value=Response(status_code, json=leaderboard_data)
+            )
         else:
             self.respx_mock.get(f"/segments/{segment_id}/leaderboard").mock(
                 return_value=Response(status_code, json=leaderboard_data)
@@ -184,20 +191,11 @@ class StravaAPIStubber:
 
     def stub_error_response(self, endpoint, method="GET", status_code=404, message="Not Found"):
         """Stub an error response for any endpoint."""
-        error_data = {
-            "message": message,
-            "errors": []
-        }
+        error_data = {"message": message, "errors": []}
 
         if method == "GET":
-            self.respx_mock.get(endpoint).mock(
-                return_value=Response(status_code, json=error_data)
-            )
+            self.respx_mock.get(endpoint).mock(return_value=Response(status_code, json=error_data))
         elif method == "PUT":
-            self.respx_mock.put(endpoint).mock(
-                return_value=Response(status_code, json=error_data)
-            )
+            self.respx_mock.put(endpoint).mock(return_value=Response(status_code, json=error_data))
         elif method == "POST":
-            self.respx_mock.post(endpoint).mock(
-                return_value=Response(status_code, json=error_data)
-            )
+            self.respx_mock.post(endpoint).mock(return_value=Response(status_code, json=error_data))

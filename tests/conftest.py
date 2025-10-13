@@ -23,7 +23,9 @@ def mock_config():
 @pytest.fixture
 def respx_mock():
     """Provide a respx mock router for HTTP requests."""
-    with respx.mock(base_url="https://www.strava.com/api/v3", assert_all_called=False) as respx_mock:
+    with respx.mock(
+        base_url="https://www.strava.com/api/v3", assert_all_called=False
+    ) as respx_mock:
         yield respx_mock
 
 
@@ -67,10 +69,7 @@ def stub_strava_api(respx_mock):
 
         def stub_error(self, endpoint, method="GET", status_code=404, error_message=None):
             """Stub an error response."""
-            error_data = {
-                "message": error_message or "Not Found",
-                "errors": []
-            }
+            error_data = {"message": error_message or "Not Found", "errors": []}
 
             if method == "GET":
                 self.respx_mock.get(endpoint).mock(
@@ -91,9 +90,7 @@ def stub_strava_api(respx_mock):
             end = start + per_page
             page_data = data_list[start:end]
 
-            self.respx_mock.get(endpoint).mock(
-                return_value=Response(200, json=page_data)
-            )
+            self.respx_mock.get(endpoint).mock(return_value=Response(200, json=page_data))
             return page_data
 
     return StravaAPIStub(respx_mock)

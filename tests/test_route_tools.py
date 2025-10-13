@@ -1,17 +1,11 @@
 """Comprehensive tests for route tools."""
 
-import os
+import json
 from unittest.mock import patch
 
 import pytest
 
-from strava_mcp.tools.routes import (
-    export_route_gpx,
-    export_route_tcx,
-    get_route,
-    list_athlete_routes,
-    validate_export_path,
-)
+from strava_mcp.tools.routes import export_route, query_routes
 from tests.fixtures.athlete_fixtures import DETAILED_ATHLETE
 from tests.fixtures.route_fixtures import GPX_DATA, ROUTE, ROUTE_LIST, TCX_DATA
 from tests.stubs.strava_api_stub import StravaAPIStubber
@@ -23,389 +17,420 @@ def stub_api(respx_mock):
     return StravaAPIStubber(respx_mock)
 
 
-@pytest.fixture
-def temp_export_dir(tmp_path):
-    """Provide a temporary directory for route exports."""
-    export_dir = tmp_path / "exports"
-    export_dir.mkdir()
-    return export_dir
+class TestQueryRoutes:
+    """Test query_routes tool."""
 
-
-class TestListAthleteRoutes:
-    """Test list_athlete_routes tool."""
-
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_list_athlete_routes_success(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test successful routes list retrieval."""
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_query_routes_single_route(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test querying single route by ID."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
-        # Use athlete ID from DETAILED_ATHLETE fixture
-        athlete_id = 1234567890987654400
+        route_id = 987654
+        stub_api.stub_route_details_endpoint(route_id, ROUTE)
+
+        result = await query_routes(route_id=route_id)
+        data = json.loads(result)
+
+        # Check structure
+        assert "data" in data
+        assert "route" in data["data"]
+        assert data["data"]["route"]["id"] == route_id
+        assert data["data"]["route"]["name"] == "Morning Commute"
+        assert data["data"]["route"]["description"] == "My daily ride to work"
+
+        # Check structured metrics
+        assert "meters" in data["data"]["route"]["distance"]
+        assert "formatted" in data["data"]["route"]["distance"]
+        assert "meters" in data["data"]["route"]["elevation_gain"]
+        assert "formatted" in data["data"]["route"]["elevation_gain"]
+
+        # Check optional fields
+        assert "type" in data["data"]["route"]
+        assert "private" in data["data"]["route"]
+        assert "starred" in data["data"]["route"]
+
+        # Check metadata
+        assert data["metadata"]["query_type"] == "single_route"
+        assert data["metadata"]["route_id"] == route_id
+
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_query_routes_with_segments(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test querying route with segments."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        route_id = 987654
+        route_with_segments = {
+            **ROUTE,
+            "segments": [
+                {
+                    "id": 1,
+                    "name": "Segment 1",
+                    "distance": 1000,
+                    "avg_grade": 5.0,
+                    "climb_category": 1,
+                    "resource_state": 2,
+                    "activity_type": "Ride",
+                    "average_grade": 5.0,
+                    "maximum_grade": 8.0,
+                    "elevation_high": 100.0,
+                    "elevation_low": 50.0,
+                    "private": False,
+                },
+                {
+                    "id": 2,
+                    "name": "Segment 2",
+                    "distance": 2000,
+                    "avg_grade": 3.5,
+                    "climb_category": 2,
+                    "resource_state": 2,
+                    "activity_type": "Ride",
+                    "average_grade": 3.5,
+                    "maximum_grade": 6.0,
+                    "elevation_high": 150.0,
+                    "elevation_low": 100.0,
+                    "private": False,
+                },
+            ],
+        }
+        stub_api.stub_route_details_endpoint(route_id, route_with_segments)
+
+        result = await query_routes(route_id=route_id)
+        data = json.loads(result)
+
+        # Debug: print result if there's an error
+        if "error" in data:
+            print(f"Error in response: {data['error']}")
+
+        assert "data" in data, f"Expected 'data' key, got: {data.keys()}"
+        assert "segments" in data["data"]["route"]
+        assert len(data["data"]["route"]["segments"]) == 2
+
+        # Check segment structure
+        segment = data["data"]["route"]["segments"][0]
+        assert "id" in segment
+        assert "name" in segment
+        assert "distance" in segment
+        assert "meters" in segment["distance"]
+        assert "formatted" in segment["distance"]
+        assert "avg_grade" in segment
+        assert "percent" in segment["avg_grade"]
+        assert "formatted" in segment["avg_grade"]
+
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_query_routes_list(self, mock_validate, mock_load_config, mock_config, stub_api):
+        """Test listing all routes."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        athlete_id = DETAILED_ATHLETE["id"]
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
         stub_api.stub_routes_endpoint(athlete_id, ROUTE_LIST)
 
-        result = await list_athlete_routes()
+        result = await query_routes(list_all=True)
+        data = json.loads(result)
 
-        assert "Found 2 routes:" in result
-        assert "Morning Commute" in result
-        assert "Weekend Loop" in result
-        assert "ID: 987654" in result
-        assert "9.32 mi" in result  # 15000m converted to miles (athlete preference is feet)
-        assert "492 ft" in result  # Elevation in feet because athlete preference
-        assert "Est. Time:" in result
-        assert "Private: No" in result
-        assert "Starred: Yes" in result
+        # Check structure
+        assert "routes" in data["data"]
+        assert "count" in data["data"]
+        assert data["data"]["count"] == 2
+        assert len(data["data"]["routes"]) == 2
 
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_list_athlete_routes_with_athlete_id(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test routes list with specific athlete ID."""
+        # Check route structure
+        route = data["data"]["routes"][0]
+        assert "id" in route
+        assert "name" in route
+        assert "distance" in route
+        assert "meters" in route["distance"]
+        assert "formatted" in route["distance"]
+        assert "elevation_gain" in route
+        assert "type" in route
+        assert "starred" in route
+
+        # Check metadata
+        assert data["metadata"]["query_type"] == "list_routes"
+
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_query_routes_default_list(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test that default query lists routes."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
-        athlete_id = 999
+        athlete_id = DETAILED_ATHLETE["id"]
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
         stub_api.stub_routes_endpoint(athlete_id, ROUTE_LIST)
 
-        result = await list_athlete_routes(athlete_id=athlete_id)
+        result = await query_routes()
+        data = json.loads(result)
 
-        assert "Found 2 routes:" in result
+        assert data["metadata"]["query_type"] == "list_routes"
+        assert "routes" in data["data"]
 
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_list_athlete_routes_with_pagination(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test routes list with pagination."""
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_query_routes_with_limit(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test querying routes with custom limit."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
-        # Use athlete ID from DETAILED_ATHLETE fixture
-        athlete_id = 1234567890987654400
+        athlete_id = DETAILED_ATHLETE["id"]
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
-        stub_api.stub_routes_endpoint(athlete_id, ROUTE_LIST)
+        routes = [ROUTE_LIST[0] for _ in range(50)]
+        stub_api.stub_routes_endpoint(athlete_id, routes)
 
-        result = await list_athlete_routes(page=2, per_page=10)
+        result = await query_routes(list_all=True, limit=10)
+        data = json.loads(result)
 
-        assert "Found 2 routes:" in result
+        # Should return max 10 routes
+        assert len(data["data"]["routes"]) <= 10
 
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_list_athlete_routes_empty(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test routes list with no results."""
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_query_routes_with_feet_units(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test querying routes with feet/miles units."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
-        # Use athlete ID from DETAILED_ATHLETE fixture
-        athlete_id = 1234567890987654400
+        route_id = 987654
+        stub_api.stub_route_details_endpoint(route_id, ROUTE)
+
+        result = await query_routes(route_id=route_id, unit="feet")
+        data = json.loads(result)
+
+        # Check that formatted values use miles/feet
+        assert "mi" in data["data"]["route"]["distance"]["formatted"]
+        assert "ft" in data["data"]["route"]["elevation_gain"]["formatted"]
+
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_query_routes_empty_list(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test querying routes with no results."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        athlete_id = DETAILED_ATHLETE["id"]
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
         stub_api.stub_routes_endpoint(athlete_id, [])
 
-        result = await list_athlete_routes()
+        result = await query_routes(list_all=True)
+        data = json.loads(result)
 
-        assert "No routes found." in result
+        assert data["data"]["count"] == 0
+        assert data["data"]["routes"] == []
 
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_list_athlete_routes_not_authenticated(self, mock_validate, mock_load_config, mock_config):
-        """Test routes list when not authenticated."""
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_query_routes_not_found(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test querying non-existent route."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        stub_api.stub_error_response("/routes/999999", status_code=404)
+
+        result = await query_routes(route_id=999999)
+        data = json.loads(result)
+
+        assert "error" in data
+        assert "not_found" in data["error"]["type"]
+        assert "suggestions" in data["error"]
+
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_query_routes_not_authenticated(
+        self, mock_validate, mock_load_config, mock_config
+    ):
+        """Test querying routes when not authenticated."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = False
 
-        result = await list_athlete_routes()
+        result = await query_routes()
+        data = json.loads(result)
 
-        assert "Error: Strava credentials not configured" in result
+        assert "error" in data
+        assert "authentication_required" in data["error"]["type"]
 
-
-class TestGetRoute:
-    """Test get_route tool."""
-
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_get_route_success(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test successful route details retrieval."""
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_query_routes_rate_limit(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test querying routes with rate limit error."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
-        route_id = 987654
-        stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
-        stub_api.stub_route_details_endpoint(route_id, ROUTE)
+        stub_api.stub_error_response("/routes/987654", status_code=429)
 
-        result = await get_route(route_id)
+        result = await query_routes(route_id=987654)
+        data = json.loads(result)
 
-        assert "Route: Morning Commute" in result
-        assert f"ID: {route_id}" in result
-        assert "Description: My daily ride to work" in result
-        assert "Measurements:" in result
-        assert "9.32 mi" in result  # Distance in miles (athlete preference is feet)
-        assert "492 ft" in result  # Elevation in feet
-        assert "Estimated Time:" in result
-        assert "Properties:" in result
-        assert "Private: No" in result
-        assert "Starred: Yes" in result
-        assert "Created: 2021-04-10" in result
-        assert f"To export this route, use export-route-gpx or export-route-tcx with ID: {route_id}" in result
-
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_get_route_with_segments(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test route details with segments."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        from tests.fixtures.segment_fixtures import SUMMARY_SEGMENT
-
-        route_id = 987654
-        # Create valid segments with all required fields
-        segments = [
-            {**SUMMARY_SEGMENT, "id": 1},
-            {**SUMMARY_SEGMENT, "id": 2, "name": "Segment 2"},
-            {**SUMMARY_SEGMENT, "id": 3, "name": "Segment 3"}
-        ]
-        route_with_segments = {**ROUTE, "segments": segments}
-        stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
-        stub_api.stub_route_details_endpoint(route_id, route_with_segments)
-
-        result = await get_route(route_id)
-
-        assert "Segments: 3 segments included" in result
-
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_get_route_not_found(self, mock_validate, mock_load_config, mock_config, stub_api):
-        """Test route details with non-existent route."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        route_id = 999999
-        stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
-        stub_api.stub_error_response(f"/routes/{route_id}", status_code=404)
-
-        result = await get_route(route_id)
-
-        assert "Error:" in result
+        assert "error" in data
+        assert "rate_limit" in data["error"]["type"]
 
 
-class TestValidateExportPath:
-    """Test validate_export_path function."""
+class TestExportRoute:
+    """Test export_route tool."""
 
-    def test_validate_export_path_valid_directory(self, temp_export_dir):
-        """Test validation with valid directory."""
-        is_valid, error_msg = validate_export_path(str(temp_export_dir))
-
-        assert is_valid is True
-        assert error_msg == ""
-
-    def test_validate_export_path_creates_directory(self, tmp_path):
-        """Test validation creates non-existent directory."""
-        new_dir = tmp_path / "new_exports"
-        is_valid, error_msg = validate_export_path(str(new_dir))
-
-        assert is_valid is True
-        assert error_msg == ""
-        assert new_dir.exists()
-        assert new_dir.is_dir()
-
-    def test_validate_export_path_not_directory(self, tmp_path):
-        """Test validation with file instead of directory."""
-        file_path = tmp_path / "file.txt"
-        file_path.write_text("test")
-
-        is_valid, error_msg = validate_export_path(str(file_path))
-
-        assert is_valid is False
-        assert "not a directory" in error_msg
-
-    def test_validate_export_path_not_writable(self, tmp_path):
-        """Test validation with non-writable directory."""
-        read_only_dir = tmp_path / "readonly"
-        read_only_dir.mkdir()
-
-        # Make directory read-only
-        os.chmod(read_only_dir, 0o444)
-
-        is_valid, error_msg = validate_export_path(str(read_only_dir))
-
-        # Restore permissions for cleanup
-        os.chmod(read_only_dir, 0o755)
-
-        # On some systems, this might still pass if running as root
-        # So we check if the validation correctly identified it
-        if not is_valid:
-            assert "not writable" in error_msg
-
-
-class TestExportRouteGPX:
-    """Test export_route_gpx tool."""
-
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_export_route_gpx_success(self, mock_validate, mock_load_config, mock_config, stub_api, temp_export_dir):
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_export_route_gpx(self, mock_validate, mock_load_config, mock_config, stub_api):
         """Test successful GPX export."""
-        mock_config.route_export_path = str(temp_export_dir)
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
         route_id = 987654
-        stub_api.stub_route_details_endpoint(route_id, ROUTE)
         stub_api.stub_route_export_gpx_endpoint(route_id, GPX_DATA)
 
-        result = await export_route_gpx(route_id)
+        result = await export_route(route_id, format="gpx")
+        data = json.loads(result)
 
-        assert "Successfully exported route 'Morning Commute' to GPX:" in result
-        assert f"route_{route_id}.gpx" in result
-        assert f"Size: {len(GPX_DATA)} bytes" in result
+        # Check structure
+        assert "data" in data
+        assert data["data"]["route_id"] == route_id
+        assert data["data"]["format"] == "gpx"
+        assert data["data"]["content"] == GPX_DATA
+        assert data["data"]["filename"] == f"route_{route_id}.gpx"
+        assert "size_bytes" in data["data"]
 
-        # Verify file was created
-        export_file = temp_export_dir / f"route_{route_id}.gpx"
-        assert export_file.exists()
-        assert export_file.read_text() == GPX_DATA
+        # Check metadata
+        assert data["metadata"]["export_format"] == "gpx"
+        assert data["metadata"]["route_id"] == route_id
 
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_export_route_gpx_custom_filename(self, mock_validate, mock_load_config, mock_config, stub_api, temp_export_dir):
-        """Test GPX export with custom filename."""
-        mock_config.route_export_path = str(temp_export_dir)
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        route_id = 987654
-        filename = "my_custom_route"
-        stub_api.stub_route_details_endpoint(route_id, ROUTE)
-        stub_api.stub_route_export_gpx_endpoint(route_id, GPX_DATA)
-
-        result = await export_route_gpx(route_id, filename=filename)
-
-        assert "Successfully exported" in result
-        assert "my_custom_route.gpx" in result
-
-        # Verify file was created with custom name
-        export_file = temp_export_dir / "my_custom_route.gpx"
-        assert export_file.exists()
-
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_export_route_gpx_auto_extension(self, mock_validate, mock_load_config, mock_config, stub_api, temp_export_dir):
-        """Test GPX export automatically adds extension."""
-        mock_config.route_export_path = str(temp_export_dir)
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        route_id = 987654
-        filename = "my_route.gpx"  # Already has extension
-        stub_api.stub_route_details_endpoint(route_id, ROUTE)
-        stub_api.stub_route_export_gpx_endpoint(route_id, GPX_DATA)
-
-        result = await export_route_gpx(route_id, filename=filename)
-
-        assert "my_route.gpx" in result
-
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_export_route_gpx_invalid_path(self, mock_validate, mock_load_config, mock_config, tmp_path):
-        """Test GPX export with invalid export path."""
-        # Point to a file instead of directory
-        invalid_path = tmp_path / "file.txt"
-        invalid_path.write_text("test")
-
-        mock_config.route_export_path = str(invalid_path)
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        route_id = 987654
-        result = await export_route_gpx(route_id)
-
-        assert "Error:" in result
-        assert "not a directory" in result
-
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_export_route_gpx_not_found(self, mock_validate, mock_load_config, mock_config, stub_api, temp_export_dir):
-        """Test GPX export with non-existent route."""
-        mock_config.route_export_path = str(temp_export_dir)
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        route_id = 999999
-        stub_api.stub_error_response(f"/routes/{route_id}", status_code=404)
-
-        result = await export_route_gpx(route_id)
-
-        assert "Error:" in result
-
-
-class TestExportRouteTCX:
-    """Test export_route_tcx tool."""
-
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_export_route_tcx_success(self, mock_validate, mock_load_config, mock_config, stub_api, temp_export_dir):
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_export_route_tcx(self, mock_validate, mock_load_config, mock_config, stub_api):
         """Test successful TCX export."""
-        mock_config.route_export_path = str(temp_export_dir)
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
         route_id = 987654
-        stub_api.stub_route_details_endpoint(route_id, ROUTE)
         stub_api.stub_route_export_tcx_endpoint(route_id, TCX_DATA)
 
-        result = await export_route_tcx(route_id)
+        result = await export_route(route_id, format="tcx")
+        data = json.loads(result)
 
-        assert "Successfully exported route 'Morning Commute' to TCX:" in result
-        assert f"route_{route_id}.tcx" in result
-        assert f"Size: {len(TCX_DATA)} bytes" in result
+        # Check structure
+        assert data["data"]["route_id"] == route_id
+        assert data["data"]["format"] == "tcx"
+        assert data["data"]["content"] == TCX_DATA
+        assert data["data"]["filename"] == f"route_{route_id}.tcx"
 
-        # Verify file was created
-        export_file = temp_export_dir / f"route_{route_id}.tcx"
-        assert export_file.exists()
-        assert export_file.read_text() == TCX_DATA
+        # Check metadata
+        assert data["metadata"]["export_format"] == "tcx"
 
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_export_route_tcx_custom_filename(self, mock_validate, mock_load_config, mock_config, stub_api, temp_export_dir):
-        """Test TCX export with custom filename."""
-        mock_config.route_export_path = str(temp_export_dir)
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_export_route_default_gpx(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test that default format is GPX."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
         route_id = 987654
-        filename = "my_tcx_route"
-        stub_api.stub_route_details_endpoint(route_id, ROUTE)
-        stub_api.stub_route_export_tcx_endpoint(route_id, TCX_DATA)
+        stub_api.stub_route_export_gpx_endpoint(route_id, GPX_DATA)
 
-        result = await export_route_tcx(route_id, filename=filename)
+        result = await export_route(route_id)
+        data = json.loads(result)
 
-        assert "Successfully exported" in result
-        assert "my_tcx_route.tcx" in result
+        assert data["data"]["format"] == "gpx"
 
-        # Verify file was created with custom name
-        export_file = temp_export_dir / "my_tcx_route.tcx"
-        assert export_file.exists()
-
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_export_route_tcx_invalid_path(self, mock_validate, mock_load_config, mock_config, tmp_path):
-        """Test TCX export with invalid export path."""
-        invalid_path = tmp_path / "file.txt"
-        invalid_path.write_text("test")
-
-        mock_config.route_export_path = str(invalid_path)
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_export_route_invalid_format(self, mock_validate, mock_load_config, mock_config):
+        """Test export with invalid format."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = True
 
-        route_id = 987654
-        result = await export_route_tcx(route_id)
+        result = await export_route(987654, format="invalid")
+        data = json.loads(result)
 
-        assert "Error:" in result
-        assert "not a directory" in result
+        assert "error" in data
+        assert "validation_error" in data["error"]["type"]
+        assert "invalid" in data["error"]["message"].lower()
 
-    @patch('strava_mcp.tools.routes.load_config')
-    @patch('strava_mcp.tools.routes.validate_credentials')
-    async def test_export_route_tcx_not_authenticated(self, mock_validate, mock_load_config, mock_config):
-        """Test TCX export when not authenticated."""
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_export_route_not_found(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test exporting non-existent route."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        stub_api.stub_error_response("/routes/999999/export_gpx", status_code=404)
+
+        result = await export_route(999999, format="gpx")
+        data = json.loads(result)
+
+        assert "error" in data
+        assert "not_found" in data["error"]["type"]
+        assert "suggestions" in data["error"]
+
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_export_route_not_authenticated(
+        self, mock_validate, mock_load_config, mock_config
+    ):
+        """Test exporting route when not authenticated."""
         mock_load_config.return_value = mock_config
         mock_validate.return_value = False
 
-        result = await export_route_tcx(987654)
+        result = await export_route(987654)
+        data = json.loads(result)
 
-        assert "Error: Strava credentials not configured" in result
+        assert "error" in data
+        assert "authentication_required" in data["error"]["type"]
+
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_export_route_rate_limit(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test exporting route with rate limit error."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        stub_api.stub_error_response("/routes/987654/export_gpx", status_code=429)
+
+        result = await export_route(987654, format="gpx")
+        data = json.loads(result)
+
+        assert "error" in data
+        assert "rate_limit" in data["error"]["type"]
+
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_export_route_size_bytes(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test that size_bytes is calculated correctly."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        route_id = 987654
+        stub_api.stub_route_export_gpx_endpoint(route_id, GPX_DATA)
+
+        result = await export_route(route_id, format="gpx")
+        data = json.loads(result)
+
+        expected_size = len(GPX_DATA.encode("utf-8"))
+        assert data["data"]["size_bytes"] == expected_size

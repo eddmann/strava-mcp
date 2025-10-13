@@ -34,7 +34,7 @@ DETAILED_ATHLETE = {
             "primary": True,
             "name": "EMC",
             "resource_state": 2,
-            "distance": 0
+            "distance": 0,
         }
     ],
     "shoes": [
@@ -43,9 +43,9 @@ DETAILED_ATHLETE = {
             "primary": True,
             "name": "adidas",
             "resource_state": 2,
-            "distance": 4904
+            "distance": 4904,
         }
-    ]
+    ],
 }
 
 ATHLETE_STATS = {
@@ -57,7 +57,7 @@ ATHLETE_STATS = {
         "moving_time": 10000,
         "elapsed_time": 10500,
         "elevation_gain": 500.0,
-        "achievement_count": 2
+        "achievement_count": 2,
     },
     "recent_run_totals": {
         "count": 3,
@@ -65,7 +65,7 @@ ATHLETE_STATS = {
         "moving_time": 3600,
         "elapsed_time": 3700,
         "elevation_gain": 100.0,
-        "achievement_count": 1
+        "achievement_count": 1,
     },
     "recent_swim_totals": {
         "count": 2,
@@ -73,7 +73,7 @@ ATHLETE_STATS = {
         "moving_time": 1800,
         "elapsed_time": 1900,
         "elevation_gain": 0.0,
-        "achievement_count": 0
+        "achievement_count": 0,
     },
     "ytd_ride_totals": {
         "count": 50,
@@ -81,7 +81,7 @@ ATHLETE_STATS = {
         "moving_time": 100000,
         "elapsed_time": 105000,
         "elevation_gain": 5000.0,
-        "achievement_count": 20
+        "achievement_count": 20,
     },
     "ytd_run_totals": {
         "count": 30,
@@ -89,7 +89,7 @@ ATHLETE_STATS = {
         "moving_time": 36000,
         "elapsed_time": 37000,
         "elevation_gain": 1000.0,
-        "achievement_count": 10
+        "achievement_count": 10,
     },
     "ytd_swim_totals": {
         "count": 20,
@@ -97,7 +97,7 @@ ATHLETE_STATS = {
         "moving_time": 18000,
         "elapsed_time": 19000,
         "elevation_gain": 0.0,
-        "achievement_count": 5
+        "achievement_count": 5,
     },
     "all_ride_totals": {
         "count": 500,
@@ -105,7 +105,7 @@ ATHLETE_STATS = {
         "moving_time": 1000000,
         "elapsed_time": 1050000,
         "elevation_gain": 50000.0,
-        "achievement_count": 200
+        "achievement_count": 200,
     },
     "all_run_totals": {
         "count": 300,
@@ -113,7 +113,7 @@ ATHLETE_STATS = {
         "moving_time": 360000,
         "elapsed_time": 370000,
         "elevation_gain": 10000.0,
-        "achievement_count": 100
+        "achievement_count": 100,
     },
     "all_swim_totals": {
         "count": 200,
@@ -121,8 +121,8 @@ ATHLETE_STATS = {
         "moving_time": 180000,
         "elapsed_time": 190000,
         "elevation_gain": 0.0,
-        "achievement_count": 50
-    }
+        "achievement_count": 50,
+    },
 }
 
 ATHLETE_ZONES = {
@@ -133,8 +133,8 @@ ATHLETE_ZONES = {
             {"min": 140, "max": 160},
             {"min": 160, "max": 175},
             {"min": 175, "max": 190},
-            {"min": 190, "max": -1}
-        ]
+            {"min": 190, "max": -1},
+        ],
     },
     "power": {
         "zones": [
@@ -142,9 +142,9 @@ ATHLETE_ZONES = {
             {"min": 150, "max": 200},
             {"min": 200, "max": 250},
             {"min": 250, "max": 300},
-            {"min": 300, "max": -1}
+            {"min": 300, "max": -1},
         ]
-    }
+    },
 }
 
 ATHLETE_ZONES_HR_ONLY = {
@@ -155,8 +155,8 @@ ATHLETE_ZONES_HR_ONLY = {
             {"min": 135, "max": 155},
             {"min": 155, "max": 170},
             {"min": 170, "max": 185},
-            {"min": 185, "max": -1}
-        ]
+            {"min": 185, "max": -1},
+        ],
     },
-    "power": None
+    "power": None,
 }

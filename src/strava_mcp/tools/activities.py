@@ -1,509 +1,361 @@
-"""Activity-related tools for Strava MCP server."""
+"""Activity-related tools for Strava MCP server.
 
-import json
-from datetime import datetime
-from typing import Annotated, Literal
+This module provides activity query tools with structured JSON output.
+"""
+
+from typing import Annotated
 
 from ..auth import load_config, validate_credentials
 from ..client import StravaAPIError, StravaClient
-from ..formatters import (
-    calculate_avg,
-    calculate_normalized_power,
-    format_date,
-    format_datetime,
-    format_distance,
-    format_duration,
-    format_elevation,
-    format_pace,
-    format_speed,
-)
+from ..models import MeasurementPreference
+from ..response_builder import ResponseBuilder
+from ..time_utils import get_range_description, parse_time_range
 
 
-async def get_recent_activities(
-    page: Annotated[int, "Page number (default: 1)"] = 1,
-    per_page: Annotated[int, "Number of activities per page (default: 30, max: 200)"] = 30,
+async def query_activities(
+    time_range: Annotated[
+        str,
+        "Time range for activities. Options: 'recent', '7d', '30d', '90d', 'ytd', "
+        "'this-week', 'this-month', or 'YYYY-MM-DD:YYYY-MM-DD'",
+    ] = "recent",
+    activity_type: Annotated[
+        str | None, "Filter by activity type (e.g., 'Run', 'Ride', 'Swim')"
+    ] = None,
+    activity_id: Annotated[int | None, "Get specific activity by ID"] = None,
+    include_details: Annotated[bool, "Include full activity details"] = True,
+    include_streams: Annotated[
+        str | None,
+        "Include stream data (comma-separated: 'time,heartrate,watts,cadence,temp,velocity_smooth')",
+    ] = None,
+    include_laps: Annotated[bool, "Include lap data"] = False,
+    include_zones: Annotated[bool, "Include heart rate and power zones"] = False,
+    limit: Annotated[int, "Maximum number of activities to return (1-200)"] = 30,
+    unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
 ) -> str:
-    """Get recent activities for the authenticated athlete."""
+    """Query Strava activities with optional enrichment.
+
+    This unified tool can:
+    - Get a single activity by ID with optional enrichment
+    - List activities within a time range with filtering
+    - Include streams, laps, and zones in a single call
+
+    Returns: JSON string with structure:
+    {
+        "data": {
+            "activity": {...}       // Single activity mode
+            OR
+            "activities": [...],    // List mode
+            "aggregated": {...}     // Summary metrics
+        },
+        "metadata": {
+            "fetched_at": "ISO timestamp",
+            "query_type": "single_activity" | "activity_list",
+            "time_range": "...",
+            "count": N
+        }
+    }
+
+    Examples:
+        - Get recent activities: query_activities()
+        - Get last 7 days: query_activities(time_range="7d")
+        - Get specific activity: query_activities(activity_id=12345)
+        - Get with laps and zones: query_activities(activity_id=12345, include_laps=True, include_zones=True)
+        - Get runs from last month: query_activities(time_range="30d", activity_type="Run")
+    """
     config = load_config()
 
     if not validate_credentials(config):
-        return (
-            "Error: Strava credentials not configured. "
-            "Please run 'strava-mcp-auth' to set up authentication."
+        return ResponseBuilder.build_error_response(
+            "Strava credentials not configured",
+            error_type="authentication_required",
+            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
+        )
+
+    # Validate limit
+    if limit < 1 or limit > 200:
+        return ResponseBuilder.build_error_response(
+            f"Invalid limit: {limit}. Must be between 1 and 200.",
+            error_type="validation_error",
         )
 
     try:
         async with StravaClient(config) as client:
-            activities = await client.get_recent_activities(page=page, per_page=per_page)
+            # Single activity mode
+            if activity_id is not None:
+                return await _get_single_activity(
+                    client,
+                    activity_id,
+                    include_details,
+                    include_streams,
+                    include_laps,
+                    include_zones,
+                    unit,
+                )
 
-            if not activities:
-                return "No activities found."
-
-            output = [f"Found {len(activities)} recent activities:\n"]
-
-            for activity in activities:
-                output.append(f"• {activity.name}")
-                output.append(f"  ID: {activity.id}")
-                output.append(f"  Type: {activity.sport_type}")
-                output.append(f"  Date: {format_date(activity.start_date_local)}")
-                output.append(f"  Distance: {format_distance(activity.distance)}")
-                output.append(f"  Duration: {format_duration(activity.moving_time)}")
-                output.append("")
-
-            return "\n".join(output)
-
-    except StravaAPIError as e:
-        return f"Error: {e.message}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"
-
-
-async def get_all_activities(
-    before: Annotated[
-        str | None, "Filter activities before this date (ISO format: YYYY-MM-DD)"
-    ] = None,
-    after: Annotated[
-        str | None, "Filter activities after this date (ISO format: YYYY-MM-DD)"
-    ] = None,
-    activity_type: Annotated[str | None, "Filter by activity type (e.g., 'Ride', 'Run')"] = None,
-    sport_type: Annotated[str | None, "Filter by sport type (e.g., 'MountainBikeRide')"] = None,
-    max_activities: Annotated[int | None, "Maximum number of activities to fetch"] = 100,
-    max_api_calls: Annotated[int | None, "Maximum number of API calls to make"] = 10,
-    per_page: Annotated[int, "Activities per page (default: 30)"] = 30,
-) -> str:
-    """Get all activities with optional filtering by date and type."""
-    config = load_config()
-
-    if not validate_credentials(config):
-        return (
-            "Error: Strava credentials not configured. "
-            "Please run 'strava-mcp-auth' to set up authentication."
-        )
-
-    try:
-        # Parse dates
-        before_dt = datetime.fromisoformat(before) if before else None
-        after_dt = datetime.fromisoformat(after) if after else None
-
-        async with StravaClient(config) as client:
-            activities = await client.get_all_activities(
-                before=before_dt,
-                after=after_dt,
-                per_page=per_page,
-                max_activities=max_activities,
-                max_api_calls=max_api_calls,
+            # List activities mode
+            return await _list_activities(
+                client, time_range, activity_type, include_details, limit, unit
             )
-
-            # Apply type filters
-            if activity_type:
-                activities = [a for a in activities if a.type == activity_type]
-            if sport_type:
-                activities = [a for a in activities if a.sport_type == sport_type]
-
-            if not activities:
-                return "No activities found matching the criteria."
-
-            output = [f"Found {len(activities)} activities:\n"]
-
-            for activity in activities:
-                output.append(f"• {activity.name}")
-                output.append(f"  ID: {activity.id}")
-                output.append(f"  Type: {activity.sport_type}")
-                output.append(f"  Date: {format_date(activity.start_date_local)}")
-                output.append(f"  Distance: {format_distance(activity.distance)}")
-                output.append(f"  Duration: {format_duration(activity.moving_time)}")
-                if activity.total_elevation_gain:
-                    output.append(f"  Elevation: {format_elevation(activity.total_elevation_gain)}")
-                output.append("")
-
-            return "\n".join(output)
 
     except ValueError as e:
-        return f"Error: Invalid date format. Use YYYY-MM-DD format. ({str(e)})"
+        return ResponseBuilder.build_error_response(
+            str(e),
+            error_type="validation_error",
+        )
     except StravaAPIError as e:
-        return f"Error: {e.message}"
+        error_type = "api_error"
+        suggestions = []
+
+        if e.status_code == 404:
+            error_type = "not_found"
+            suggestions = ["Check that the activity ID is correct and belongs to your account"]
+        elif e.status_code == 429:
+            error_type = "rate_limit"
+            suggestions = ["Wait a few minutes before making more requests"]
+
+        return ResponseBuilder.build_error_response(
+            e.message,
+            error_type=error_type,
+            suggestions=suggestions if suggestions else None,
+        )
     except Exception as e:
-        return f"Unexpected error: {str(e)}"
+        return ResponseBuilder.build_error_response(
+            f"Unexpected error: {str(e)}",
+            error_type="internal_error",
+        )
 
 
-async def get_activity_details(
-    activity_id: Annotated[int, "The ID of the activity"],
+async def _get_single_activity(
+    client: StravaClient,
+    activity_id: int,
+    include_details: bool,
+    include_streams: str | None,
+    include_laps: bool,
+    include_zones: bool,
+    unit: MeasurementPreference,
 ) -> str:
-    """Get detailed information about a specific activity."""
+    """Get a single activity with optional enrichment."""
+    # Get activity details
+    activity = await client.get_activity(activity_id)
+
+    # Format activity
+    formatted_activity = ResponseBuilder.format_activity(activity.model_dump(), unit)
+
+    data = {"activity": formatted_activity}
+
+    # Add streams if requested
+    if include_streams:
+        stream_types = [s.strip() for s in include_streams.split(",")]
+        streams = await client.get_activity_streams(activity_id, stream_types)
+
+        # streams is a dict keyed by stream type when key_by_type=True (default)
+        data["streams"] = streams
+
+    # Add laps if requested
+    if include_laps:
+        laps = await client.get_activity_laps(activity_id)
+        data["laps"] = [
+            ResponseBuilder.format_lap(lap.model_dump(), i + 1, unit) for i, lap in enumerate(laps)
+        ]
+
+    # Add zones if requested
+    if include_zones:
+        zones = await client.get_activity_zones(activity_id)
+        if zones:
+            data["zones"] = ResponseBuilder.format_zones(zones[0].model_dump())
+
+    metadata = {
+        "query_type": "single_activity",
+        "activity_id": activity_id,
+        "includes": [],
+    }
+
+    if include_streams:
+        metadata["includes"].append(f"streams:{include_streams}")
+    if include_laps:
+        metadata["includes"].append("laps")
+    if include_zones:
+        metadata["includes"].append("zones")
+
+    return ResponseBuilder.build_response(data, metadata=metadata)
+
+
+async def _list_activities(
+    client: StravaClient,
+    time_range: str,
+    activity_type: str | None,
+    include_details: bool,
+    limit: int,
+    unit: MeasurementPreference,
+) -> str:
+    """List activities within a time range."""
+    # Parse time range
+    start, end = parse_time_range(time_range)
+
+    # Get activities
+    activities = await client.get_all_activities(
+        after=start,
+        before=end,
+        per_page=min(limit, 200),
+        max_activities=limit,
+        max_api_calls=10,
+    )
+
+    # Filter by activity type if specified
+    if activity_type:
+        activities = [a for a in activities if a.type == activity_type]
+
+    # Limit results
+    activities = activities[:limit]
+
+    if not activities:
+        data = {"activities": [], "aggregated": {"count": 0}}
+        metadata = {
+            "query_type": "activity_list",
+            "time_range": get_range_description(time_range),
+            "time_range_parsed": {
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+            },
+            "count": 0,
+        }
+        if activity_type:
+            metadata["activity_type"] = activity_type
+
+        return ResponseBuilder.build_response(data, metadata=metadata)
+
+    # Format activities
+    formatted_activities = [
+        ResponseBuilder.format_activity(a.model_dump(), unit) for a in activities
+    ]
+
+    # Aggregate metrics
+    aggregated = ResponseBuilder.aggregate_activities([a.model_dump() for a in activities], unit)
+
+    data = {
+        "activities": formatted_activities,
+        "aggregated": aggregated,
+    }
+
+    metadata = {
+        "query_type": "activity_list",
+        "time_range": get_range_description(time_range),
+        "time_range_parsed": {
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+        },
+        "count": len(formatted_activities),
+    }
+
+    if activity_type:
+        metadata["activity_type"] = activity_type
+
+    return ResponseBuilder.build_response(data, metadata=metadata)
+
+
+async def get_activity_social(
+    activity_id: Annotated[int, "Activity ID"],
+    include_comments: Annotated[bool, "Include comments"] = True,
+    include_kudos: Annotated[bool, "Include kudos"] = True,
+    unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
+) -> str:
+    """Get social data for an activity (comments and kudos).
+
+    Returns: JSON string with structure:
+    {
+        "data": {
+            "activity": {
+                "id": ...,
+                "name": "..."
+            },
+            "comments": [...],
+            "kudos": [...]
+        },
+        "metadata": {
+            "fetched_at": "ISO timestamp",
+            "activity_id": N
+        }
+    }
+    """
     config = load_config()
 
     if not validate_credentials(config):
-        return (
-            "Error: Strava credentials not configured. "
-            "Please run 'strava-mcp-auth' to set up authentication."
+        return ResponseBuilder.build_error_response(
+            "Strava credentials not configured",
+            error_type="authentication_required",
+            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
         )
 
     try:
         async with StravaClient(config) as client:
+            # Get basic activity info
             activity = await client.get_activity(activity_id)
 
-            output = [f"Activity: {activity.name}\n"]
-            output.append(f"ID: {activity.id}")
-            output.append(f"Type: {activity.sport_type}")
-            output.append(f"Date: {format_datetime(activity.start_date_local)}")
-            output.append(f"Timezone: {activity.timezone}")
-            output.append("")
+            data = {
+                "activity": {
+                    "id": activity.id,
+                    "name": activity.name,
+                    "type": activity.type,
+                }
+            }
 
-            output.append("Distance & Time:")
-            output.append(f"  Distance: {format_distance(activity.distance)}")
-            output.append(f"  Moving Time: {format_duration(activity.moving_time)}")
-            output.append(f"  Elapsed Time: {format_duration(activity.elapsed_time)}")
-            output.append("")
+            # Add comments if requested
+            if include_comments:
+                comments = await client.get_activity_comments(activity_id)
+                data["comments"] = [
+                    {
+                        "id": comment.id,
+                        "athlete": {
+                            "id": comment.athlete.id,
+                            "name": f"{comment.athlete.firstname} {comment.athlete.lastname}",
+                        },
+                        "text": comment.text,
+                        "created_at": comment.created_at,
+                    }
+                    for comment in comments
+                ]
 
-            if activity.average_speed:
-                output.append("Speed:")
-                output.append(f"  Average: {format_speed(activity.average_speed)}")
-                if activity.max_speed:
-                    output.append(f"  Max: {format_speed(activity.max_speed)}")
-                output.append(f"  Pace: {format_pace(activity.average_speed)}")
-                output.append("")
+            # Add kudos if requested
+            if include_kudos:
+                kudos = await client.get_activity_kudoers(activity_id)
+                data["kudos"] = [
+                    {
+                        "id": kudoer.id,
+                        "name": f"{kudoer.firstname} {kudoer.lastname}",
+                    }
+                    for kudoer in kudos
+                ]
 
-            if activity.total_elevation_gain:
-                output.append("Elevation:")
-                output.append(f"  Total Gain: {format_elevation(activity.total_elevation_gain)}")
-                output.append("")
+            metadata = {
+                "activity_id": activity_id,
+                "includes": [],
+            }
 
-            if activity.has_heartrate:
-                output.append("Heart Rate:")
-                if activity.average_heartrate:
-                    output.append(f"  Average: {activity.average_heartrate:.0f} bpm")
-                if activity.max_heartrate:
-                    output.append(f"  Max: {activity.max_heartrate} bpm")
-                output.append("")
+            if include_comments:
+                metadata["includes"].append(f"comments:{len(data.get('comments', []))}")
+            if include_kudos:
+                metadata["includes"].append(f"kudos:{len(data.get('kudos', []))}")
 
-            if activity.calories:
-                output.append(f"Calories: {activity.calories:.0f}")
-                output.append("")
-
-            output.append("Engagement:")
-            output.append(f"  Kudos: {activity.kudos_count or 0}")
-            output.append(f"  Comments: {activity.comment_count or 0}")
-            output.append(f"  Achievements: {activity.achievement_count or 0}")
-            output.append("")
-
-            if activity.description:
-                output.append(f"Description: {activity.description}")
-
-            return "\n".join(output)
+            return ResponseBuilder.build_response(data, metadata=metadata)
 
     except StravaAPIError as e:
-        return f"Error: {e.message}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"
+        error_type = "api_error"
+        suggestions = []
 
+        if e.status_code == 404:
+            error_type = "not_found"
+            suggestions = ["Check that the activity ID is correct and belongs to your account"]
+        elif e.status_code == 429:
+            error_type = "rate_limit"
+            suggestions = ["Wait a few minutes before making more requests"]
 
-async def get_activity_streams(
-    activity_id: Annotated[int, "The ID of the activity"],
-    streams: Annotated[
-        str | None,
-        "Comma-separated stream types (time,distance,latlng,altitude,velocity_smooth,heartrate,cadence,watts,temp,moving,grade_smooth)",
-    ] = None,
-    resolution: Annotated[Literal["low", "medium", "high"] | None, "Data resolution"] = None,
-    max_results: Annotated[int | None, "Limit number of data points returned"] = None,
-) -> str:
-    """Get activity streams (time-series data) for detailed analysis."""
-    config = load_config()
-
-    if not validate_credentials(config):
-        return (
-            "Error: Strava credentials not configured. "
-            "Please run 'strava-mcp-auth' to set up authentication."
+        return ResponseBuilder.build_error_response(
+            e.message,
+            error_type=error_type,
+            suggestions=suggestions if suggestions else None,
         )
-
-    try:
-        # Parse stream types
-        stream_list = streams.split(",") if streams else None
-
-        async with StravaClient(config) as client:
-            stream_data = await client.get_activity_streams(
-                activity_id=activity_id,
-                keys=stream_list,
-            )
-
-            if not stream_data:
-                return "No stream data available for this activity."
-
-            output = [f"Activity {activity_id} Streams:\n"]
-
-            # Process each stream
-            for stream_name, stream_info in stream_data.items():
-                if isinstance(stream_info, dict) and "data" in stream_info:
-                    # Dynamic data from Strava API - runtime type checking
-                    data = stream_info["data"]  # type: ignore[reportUnknownVariableType]
-
-                    # Apply max_results limit
-                    if max_results and len(data) > max_results:  # type: ignore[reportUnknownArgumentType]
-                        data = data[:max_results]  # type: ignore[reportUnknownVariableType]
-
-                    output.append(f"{stream_name.upper()}:")
-                    output.append(f"  Data points: {len(data)}")  # type: ignore[reportUnknownArgumentType]
-
-                    # Calculate and display statistics
-                    if stream_name not in ["latlng", "moving", "time"]:
-                        if isinstance(data[0], (int, float)):
-                            output.append(f"  Max: {max(data)}")  # type: ignore[reportUnknownArgumentType]
-                            output.append(f"  Min: {min(data)}")  # type: ignore[reportUnknownArgumentType]
-                            output.append(f"  Avg: {calculate_avg(data):.1f}")  # type: ignore[reportUnknownArgumentType]
-
-                            # Special calculations
-                            if stream_name == "watts":
-                                np = calculate_normalized_power(data)  # type: ignore[reportUnknownArgumentType]
-                                output.append(f"  Normalized Power: {np}")
-                            elif stream_name == "velocity_smooth":
-                                max_kmh = max(data) * 3.6  # type: ignore[reportUnknownVariableType, reportUnknownArgumentType]
-                                avg_kmh = calculate_avg(data) * 3.6  # type: ignore[reportUnknownArgumentType]
-                                output.append(f"  Max Speed: {max_kmh:.1f} km/h")
-                                output.append(f"  Avg Speed: {avg_kmh:.1f} km/h")
-
-                    # Show sample data (first 5 points)
-                    if max_results and max_results <= 20:
-                        output.append(f"  Data: {data}")
-                    else:
-                        output.append(f"  Sample (first 5): {data[:5]}")
-
-                    output.append("")
-
-            output.append(
-                "\nNote: Use max_results parameter to limit data points for detailed viewing."
-            )
-
-            return "\n".join(output)
-
-    except StravaAPIError as e:
-        return f"Error: {e.message}"
     except Exception as e:
-        return f"Unexpected error: {str(e)}"
-
-
-async def get_activity_laps(
-    activity_id: Annotated[int, "The ID of the activity"],
-) -> str:
-    """Get lap information for a specific activity."""
-    config = load_config()
-
-    if not validate_credentials(config):
-        return (
-            "Error: Strava credentials not configured. "
-            "Please run 'strava-mcp-auth' to set up authentication."
+        return ResponseBuilder.build_error_response(
+            f"Unexpected error: {str(e)}",
+            error_type="internal_error",
         )
-
-    try:
-        async with StravaClient(config) as client:
-            laps = await client.get_activity_laps(activity_id)
-
-            if not laps:
-                return "No laps found for this activity."
-
-            output = [f"Found {len(laps)} laps for activity {activity_id}:\n"]
-
-            for i, lap in enumerate(laps, 1):
-                output.append(f"Lap {i} - {lap.name or 'Unnamed'}")
-                output.append(f"  Distance: {format_distance(lap.distance)}")
-                output.append(f"  Moving Time: {format_duration(lap.moving_time)}")
-                output.append(f"  Elapsed Time: {format_duration(lap.elapsed_time)}")
-
-                if lap.average_speed:
-                    output.append(f"  Avg Speed: {format_speed(lap.average_speed)}")
-                    output.append(f"  Avg Pace: {format_pace(lap.average_speed)}")
-
-                if lap.max_speed:
-                    output.append(f"  Max Speed: {format_speed(lap.max_speed)}")
-
-                if lap.total_elevation_gain:
-                    output.append(f"  Elevation Gain: {format_elevation(lap.total_elevation_gain)}")
-
-                if lap.average_heartrate:
-                    output.append(f"  Avg HR: {lap.average_heartrate:.0f} bpm")
-
-                if lap.max_heartrate:
-                    output.append(f"  Max HR: {lap.max_heartrate} bpm")
-
-                if lap.average_watts:
-                    output.append(f"  Avg Power: {lap.average_watts:.0f} W")
-
-                if lap.average_cadence:
-                    output.append(f"  Avg Cadence: {lap.average_cadence:.0f} rpm")
-
-                output.append("")
-
-            # Also include raw JSON for advanced use
-            output.append("\n--- Raw Lap Data (JSON) ---")
-            output.append(json.dumps([lap.model_dump() for lap in laps], indent=2, default=str))
-
-            return "\n".join(output)
-
-    except StravaAPIError as e:
-        return f"Error: {e.message}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"
-
-
-async def get_activity_zones(
-    activity_id: Annotated[int, "The ID of the activity"],
-) -> str:
-    """Get heart rate and power zones for a specific activity."""
-    config = load_config()
-
-    if not validate_credentials(config):
-        return (
-            "Error: Strava credentials not configured. "
-            "Please run 'strava-mcp-auth' to set up authentication."
-        )
-
-    try:
-        async with StravaClient(config) as client:
-            zones = await client.get_activity_zones(activity_id)
-
-            if not zones:
-                return "No zone data available for this activity."
-
-            output = [f"Activity {activity_id} Zone Analysis:\n"]
-
-            for zone in zones:
-                if zone.type == "heartrate":
-                    output.append("=== HEART RATE ZONES ===")
-                    output.append(f"Sensor Based: {'Yes' if zone.sensor_based else 'No'}")
-                    output.append(f"Custom Zones: {'Yes' if zone.custom_zones else 'No'}")
-                    if zone.score:
-                        output.append(f"Score: {zone.score}")
-                    if zone.points:
-                        output.append(f"Points: {zone.points}")
-                    output.append("")
-
-                    if zone.distribution_buckets:
-                        output.append("Time in Zones:")
-                        for i, bucket in enumerate(zone.distribution_buckets, 1):
-                            min_hr = bucket.min if bucket.min is not None else "N/A"
-                            max_hr = bucket.max if bucket.max is not None else "∞"
-                            time_min = bucket.time // 60 if bucket.time else 0
-                            time_sec = bucket.time % 60 if bucket.time else 0
-                            output.append(
-                                f"  Zone {i} ({min_hr}-{max_hr} bpm): {time_min}:{time_sec:02d}"
-                            )
-                    output.append("")
-
-                elif zone.type == "power":
-                    output.append("=== POWER ZONES ===")
-                    output.append(f"Sensor Based: {'Yes' if zone.sensor_based else 'No'}")
-                    output.append(f"Custom Zones: {'Yes' if zone.custom_zones else 'No'}")
-                    if zone.score:
-                        output.append(f"Score: {zone.score}")
-                    if zone.points:
-                        output.append(f"Points: {zone.points}")
-                    output.append("")
-
-                    if zone.distribution_buckets:
-                        output.append("Time in Zones:")
-                        for i, bucket in enumerate(zone.distribution_buckets, 1):
-                            min_power = bucket.min if bucket.min is not None else "N/A"
-                            max_power = bucket.max if bucket.max is not None else "∞"
-                            time_min = bucket.time // 60 if bucket.time else 0
-                            time_sec = bucket.time % 60 if bucket.time else 0
-                            output.append(
-                                f"  Zone {i} ({min_power}-{max_power}W): {time_min}:{time_sec:02d}"
-                            )
-                    output.append("")
-
-            return "\n".join(output)
-
-    except StravaAPIError as e:
-        return f"Error: {e.message}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"
-
-
-async def get_activity_comments(
-    activity_id: Annotated[int, "The ID of the activity"],
-    page: Annotated[int, "Page number (default: 1)"] = 1,
-    per_page: Annotated[int, "Number of comments per page (default: 30)"] = 30,
-) -> str:
-    """Get comments on a specific activity."""
-    config = load_config()
-
-    if not validate_credentials(config):
-        return (
-            "Error: Strava credentials not configured. "
-            "Please run 'strava-mcp-auth' to set up authentication."
-        )
-
-    try:
-        async with StravaClient(config) as client:
-            comments = await client.get_activity_comments(
-                activity_id=activity_id, page=page, per_page=per_page
-            )
-
-            if not comments:
-                return f"No comments found for activity {activity_id}."
-
-            output = [f"Found {len(comments)} comments on activity {activity_id}:\n"]
-
-            for i, comment in enumerate(comments, 1):
-                athlete_name = "Unknown"
-                if comment.athlete:
-                    athlete_name = f"{comment.athlete.firstname} {comment.athlete.lastname}"
-
-                output.append(f"{i}. {athlete_name}")
-                if comment.created_at:
-                    output.append(f"   {format_datetime(comment.created_at)}")
-                if comment.text:
-                    # Wrap long comments
-                    text = comment.text.replace("\n", "\n   ")
-                    output.append(f'   "{text}"')
-                output.append("")
-
-            return "\n".join(output)
-
-    except StravaAPIError as e:
-        return f"Error: {e.message}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"
-
-
-async def get_activity_kudoers(
-    activity_id: Annotated[int, "The ID of the activity"],
-    page: Annotated[int, "Page number (default: 1)"] = 1,
-    per_page: Annotated[int, "Number of kudoers per page (default: 30)"] = 30,
-) -> str:
-    """Get athletes who gave kudos to a specific activity."""
-    config = load_config()
-
-    if not validate_credentials(config):
-        return (
-            "Error: Strava credentials not configured. "
-            "Please run 'strava-mcp-auth' to set up authentication."
-        )
-
-    try:
-        async with StravaClient(config) as client:
-            kudoers = await client.get_activity_kudoers(
-                activity_id=activity_id, page=page, per_page=per_page
-            )
-
-            if not kudoers:
-                return f"No kudos found for activity {activity_id}."
-
-            output = [f"Found {len(kudoers)} kudos on activity {activity_id}:\n"]
-
-            for i, athlete in enumerate(kudoers, 1):
-                name = f"{athlete.firstname} {athlete.lastname}"
-                location_parts = filter(None, [athlete.city, athlete.state, athlete.country])
-                location = ", ".join(location_parts) if location_parts else ""
-
-                output.append(f"{i}. {name}")
-                if location:
-                    output.append(f"   {location}")
-                if athlete.premium:
-                    output.append("   Premium Member")
-                output.append("")
-
-            return "\n".join(output)
-
-    except StravaAPIError as e:
-        return f"Error: {e.message}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"

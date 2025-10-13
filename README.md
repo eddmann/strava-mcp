@@ -9,12 +9,13 @@ A Model Context Protocol (MCP) server for Strava integration. Access your activi
 
 ## Overview
 
-This MCP server provides 18 tools to interact with your Strava account, organised into 4 categories:
+This MCP server provides 11 tools to interact with your Strava account, organised into 5 categories:
 
-- Activities (5 tools) - List, filter, and analyse your Strava activities
-- Athlete (3 tools) - Access profile, statistics, and training zones
-- Segments (6 tools) - Explore and track segment efforts
-- Routes (4 tools) - Manage and export routes
+- Activities (2 tools) - Query and analyze your Strava activities
+- Athlete (1 tool) - Access profile, statistics, and training zones
+- Segments (3 tools) - Explore and track segment efforts
+- Routes (2 tools) - Manage and export routes
+- Analysis (3 tools) - Training insights, comparison, and similarity search
 
 ## Prerequisites
 
@@ -161,20 +162,17 @@ Ask Claude to interact with your Strava data using natural language:
 
 ```
 "Show me my recent runs"
-"Get all my runs from August 2025"
-"What was my pace and heart rate for my last tempo run?"
-"Show me the heart rate and cadence data for my last interval session"
-"What were my kilometre splits for my last long run?"
+"Get my runs from the last 30 days"
+"What was my pace and heart rate for activity 12345?"
+"Show me lap splits and heart rate zones for my last long run"
 ```
 
-### Athlete Stats
+### Athlete Profile & Stats
 
 ```
 "Show my running profile and current weight"
 "What are my year-to-date running stats?"
-"How many kilometres have I run this month compared to all-time?"
-"Show me my heart rate zones"
-"What are my current training zones?"
+"Show me my heart rate and power zones"
 ```
 
 ### Segments
@@ -182,61 +180,64 @@ Ask Claude to interact with your Strava data using natural language:
 ```
 "List my starred running segments"
 "Find popular running segments near coordinates 51.5074, -0.1278"
-"Show details for segment 229781"
-"Star that hill segment I ran yesterday"
-"What's my PR on this parkrun segment?"
-"Show all my attempts at this segment"
+"Show details for segment 229781 with my effort history"
+"Star segment 229781"
+"Show the leaderboard for this segment"
 ```
 
 ### Routes
 
 ```
 "Show me all my running routes"
-"Show details for my regular long run route"
-"What's the elevation profile of my hilly 10k route?"
-"Export my marathon route to GPX"
-"Export my favourite half marathon course to TCX"
+"Show details for route 54321"
+"Export route 54321 to GPX format"
+```
+
+### Training Analysis
+
+```
+"Analyze my training over the past 30 days"
+"Compare activities 12345, 12346, and 12347"
+"Find activities similar to my last long run"
 ```
 
 ## Available Tools
 
-### Activities (5 tools)
+### Activities (2 tools)
 
-| Tool                    | Description                                                   |
-| ----------------------- | ------------------------------------------------------------- |
-| `get-recent-activities` | Get recent activities for the authenticated athlete           |
-| `get-all-activities`    | Get all activities with optional filtering by date and type   |
-| `get-activity-details`  | Get detailed information about a specific activity            |
-| `get-activity-streams`  | Get activity streams (time-series data) for detailed analysis |
-| `get-activity-laps`     | Get lap information for a specific activity                   |
+| Tool                  | Description                                                                  |
+| --------------------- | ---------------------------------------------------------------------------- |
+| `query-activities`    | Unified query for activities with optional enrichment (laps, zones, streams) |
+| `get-activity-social` | Get comments and kudos for an activity                                       |
 
-### Athlete (3 tools)
+### Athlete (1 tool)
 
-| Tool                  | Description                                                        |
-| --------------------- | ------------------------------------------------------------------ |
-| `get-athlete-profile` | Get the authenticated athlete's profile information                |
-| `get-athlete-stats`   | Get statistics for an athlete (recent, year-to-date, and all-time) |
-| `get-athlete-zones`   | Get the authenticated athlete's heart rate and power zones         |
+| Tool                  | Description                                                                             |
+| --------------------- | --------------------------------------------------------------------------------------- |
+| `get-athlete-profile` | Get athlete profile with optional statistics (recent, YTD, all-time) and training zones |
 
-### Segments (6 tools)
+### Segments (3 tools)
 
-| Tool                    | Description                                                      |
-| ----------------------- | ---------------------------------------------------------------- |
-| `list-starred-segments` | List segments starred by the authenticated athlete               |
-| `explore-segments`      | Explore segments within geographic bounds                        |
-| `get-segment`           | Get detailed information about a specific segment                |
-| `star-segment`          | Star or unstar a segment                                         |
-| `get-segment-effort`    | Get detailed information about a specific segment effort         |
-| `list-segment-efforts`  | List efforts for a specific segment by the authenticated athlete |
+| Tool                      | Description                                                             |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `query-segments`          | Unified segment query (by ID, starred, or explore by geographic bounds) |
+| `star-segment`            | Star or unstar a segment                                                |
+| `get-segment-leaderboard` | Get segment leaderboard with filtering options                          |
 
-### Routes (4 tools)
+### Routes (2 tools)
 
-| Tool                  | Description                                     |
-| --------------------- | ----------------------------------------------- |
-| `list-athlete-routes` | List routes for an athlete                      |
-| `get-route`           | Get detailed information about a specific route |
-| `export-route-gpx`    | Export a route as GPX file                      |
-| `export-route-tcx`    | Export a route as TCX file                      |
+| Tool           | Description                                               |
+| -------------- | --------------------------------------------------------- |
+| `query-routes` | Get route details (single route by ID or list all routes) |
+| `export-route` | Export a route to GPX or TCX format                       |
+
+### Analysis (3 tools)
+
+| Tool                      | Description                                                              |
+| ------------------------- | ------------------------------------------------------------------------ |
+| `analyze-training`        | Analyze training over a time period with aggregated metrics and insights |
+| `compare-activities`      | Compare 2-5 activities side-by-side                                      |
+| `find-similar-activities` | Find activities similar to a reference activity for progress tracking    |
 
 ## License
 
