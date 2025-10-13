@@ -22,7 +22,6 @@ async def query_activities(
         str | None, "Filter by activity type (e.g., 'Run', 'Ride', 'Swim')"
     ] = None,
     activity_id: Annotated[int | None, "Get specific activity by ID"] = None,
-    include_details: Annotated[bool, "Include full activity details"] = True,
     include_streams: Annotated[
         str | None,
         "Include stream data (comma-separated: 'time,heartrate,watts,cadence,temp,velocity_smooth')",
@@ -92,7 +91,6 @@ async def query_activities(
                 return await _get_single_activity(
                     client,
                     activity_id,
-                    include_details,
                     include_streams,
                     include_laps,
                     include_zones,
@@ -101,7 +99,7 @@ async def query_activities(
 
             # List activities mode
             return await _list_activities(
-                client, time_range, activity_type, include_details, limit, unit
+                client, time_range, activity_type, limit, unit
             )
 
     except ValueError as e:
@@ -135,7 +133,6 @@ async def query_activities(
 async def _get_single_activity(
     client: StravaClient,
     activity_id: int,
-    include_details: bool,
     include_streams: str | None,
     include_laps: bool,
     include_zones: bool,
@@ -192,7 +189,6 @@ async def _list_activities(
     client: StravaClient,
     time_range: str,
     activity_type: str | None,
-    include_details: bool,
     limit: int,
     unit: MeasurementPreference,
 ) -> str:

@@ -85,7 +85,7 @@ class ResponseBuilder:
 
         response["metadata"] = converted_meta
 
-        return json.dumps(response, indent=2)
+        return json.dumps(response)
 
     @staticmethod
     def build_error_response(
@@ -114,7 +114,7 @@ class ResponseBuilder:
         if suggestions:
             response["error"]["suggestions"] = suggestions
 
-        return json.dumps(response, indent=2)
+        return json.dumps(response)
 
     @staticmethod
     def format_activity(
