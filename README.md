@@ -1,5 +1,3 @@
-<img src="logo.png" width="300">
-
 # Strava MCP Server
 
 A Model Context Protocol (MCP) server for Strava integration. Access your activities, athlete stats, segments, and routes through Claude and other LLMs.

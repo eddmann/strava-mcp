@@ -210,7 +210,7 @@ async def _list_starred_segments(
     """List starred segments."""
     segments = await client.list_starred_segments(page=1, per_page=limit)
 
-    formatted_segments = []
+    formatted_segments: list[dict[str, Any]] = []
     for segment in segments[:limit]:
         formatted_segments.append(
             {
@@ -278,7 +278,7 @@ async def _explore_segments(
     # Extract segments list from response
     segments = response.get("segments", [])
 
-    formatted_segments = []
+    formatted_segments: list[dict[str, Any]] = []
     for segment in segments[:limit]:
         formatted_segments.append(
             {
@@ -459,7 +459,7 @@ async def get_segment_leaderboard(
                 per_page=per_page,
             )
 
-            entries = []
+            entries: list[dict[str, Any]] = []
             for entry in leaderboard.entries:
                 entries.append(
                     {
@@ -481,31 +481,31 @@ async def get_segment_leaderboard(
                     }
                 )
 
-            data = {
+            data: dict[str, Any] = {
                 "entries": entries,
                 "entry_count": leaderboard.entry_count,
             }
 
-            metadata = {
-                "segment_id": segment_id,
-                "filters": {},
-            }
-
+            filters: dict[str, Any] = {}
             if gender:
-                metadata["filters"]["gender"] = gender
+                filters["gender"] = gender
             if age_group:
-                metadata["filters"]["age_group"] = age_group
+                filters["age_group"] = age_group
             if weight_class:
-                metadata["filters"]["weight_class"] = weight_class
+                filters["weight_class"] = weight_class
             if following:
-                metadata["filters"]["following"] = following
+                filters["following"] = following
             if club_id:
-                metadata["filters"]["club_id"] = club_id
+                filters["club_id"] = club_id
             if date_range:
-                metadata["filters"]["date_range"] = date_range
+                filters["date_range"] = date_range
 
-            metadata["page"] = page
-            metadata["per_page"] = per_page
+            metadata: dict[str, Any] = {
+                "segment_id": segment_id,
+                "filters": filters,
+                "page": page,
+                "per_page": per_page,
+            }
 
             return ResponseBuilder.build_response(data, metadata=metadata)
 

@@ -12,7 +12,7 @@ across all MCP tools. All tools return JSON with a standard structure:
 
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from .formatters import (
     format_distance,
@@ -24,12 +24,12 @@ from .formatters import (
 from .models import MeasurementPreference
 
 
-def _convert_datetimes(obj: Any) -> Any:
+def _convert_datetimes(obj: Any) -> str | dict[str, Any] | list[Any] | Any:
     """Recursively convert datetime objects to ISO strings."""
     if isinstance(obj, datetime):
         return obj.isoformat()
     elif isinstance(obj, dict):
-        return {k: _convert_datetimes(v) for k, v in obj.items()}
+        return {str(k): _convert_datetimes(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [_convert_datetimes(item) for item in obj]
     return obj
@@ -66,23 +66,24 @@ class ResponseBuilder:
             }
         """
         # Convert datetime objects to ISO strings
-        data = _convert_datetimes(data)
+        converted_data = cast(dict[str, Any], _convert_datetimes(data))
+        converted_analysis: dict[str, Any] | None = None
         if analysis:
-            analysis = _convert_datetimes(analysis)
+            converted_analysis = cast(dict[str, Any], _convert_datetimes(analysis))
 
-        response = {"data": data}
+        response: dict[str, Any] = {"data": converted_data}
 
-        if analysis:
-            response["analysis"] = analysis
+        if converted_analysis:
+            response["analysis"] = converted_analysis
 
         # Build metadata with timestamp
         meta = metadata or {}
-        meta = _convert_datetimes(meta)
-        meta["fetched_at"] = datetime.now().isoformat()
+        converted_meta = cast(dict[str, Any], _convert_datetimes(meta))
+        converted_meta["fetched_at"] = datetime.now().isoformat()
         if query_type:
-            meta["query_type"] = query_type
+            converted_meta["query_type"] = query_type
 
-        response["metadata"] = meta
+        response["metadata"] = converted_meta
 
         return json.dumps(response, indent=2)
 
@@ -102,7 +103,7 @@ class ResponseBuilder:
         Returns:
             JSON string with error structure
         """
-        response = {
+        response: dict[str, dict[str, str | list[str]]] = {
             "error": {
                 "message": error_message,
                 "type": error_type,
@@ -319,25 +320,25 @@ class ResponseBuilder:
 
         # Heart rate zones
         if hr_zones := zones.get("heart_rate"):
-            formatted["heart_rate"] = {
-                "custom_zones": hr_zones.get("custom_zones", False),
-                "zones": [],
-            }
-
+            zone_list: list[dict[str, Any]] = []
             for zone in hr_zones.get("zones", []):
-                formatted["heart_rate"]["zones"].append(
+                zone_list.append(
                     {"min": zone.get("min"), "max": zone.get("max")}
                 )
+            formatted["heart_rate"] = {
+                "custom_zones": hr_zones.get("custom_zones", False),
+                "zones": zone_list,
+            }
 
         # Power zones
         if power_zones := zones.get("power"):
-            formatted["power"] = {
-                "zones": [],
-            }
-
+            power_zone_list: list[dict[str, Any]] = []
             for zone in power_zones.get("zones", []):
-                formatted["power"]["zones"].append(
+                power_zone_list.append(
                     {"min": zone.get("min"), "max": zone.get("max")})
+            formatted["power"] = {
+                "zones": power_zone_list,
+            }
 
         return formatted
 
