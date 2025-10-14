@@ -201,6 +201,69 @@ class StravaClient:
 
         return all_activities
 
+    async def get_activities_by_type(
+        self,
+        activity_type: str,
+        before: datetime | None = None,
+        after: datetime | None = None,
+        per_page: int = 30,
+        max_activities: int | None = None,
+        max_api_calls: int = 10,
+    ) -> list[SummaryActivity]:
+        """Get activities filtered by type.
+
+        Since Strava API doesn't support server-side type filtering,
+        this fetches activities iteratively until we have enough of the desired type.
+
+        Args:
+            activity_type: Activity type to filter (e.g., 'Run', 'Ride')
+            before: Filter activities before this timestamp
+            after: Filter activities after this timestamp
+            per_page: Number of activities per API call (max 200)
+            max_activities: Maximum activities of the desired type to return
+            max_api_calls: Maximum API calls to make (default 10)
+
+        Returns:
+            List of activities matching the specified type
+        """
+        filtered_activities: list[SummaryActivity] = []
+        page = 1
+        api_calls = 0
+
+        params: dict[str, Any] = {"per_page": per_page}
+        if before:
+            params["before"] = int(before.timestamp())
+        if after:
+            params["after"] = int(after.timestamp())
+
+        while True:
+            # Check termination conditions
+            if api_calls >= max_api_calls:
+                break
+
+            if max_activities and len(filtered_activities) >= max_activities:
+                break
+
+            params["page"] = page
+            response = await self._request("GET", "/athlete/activities", params=params)
+            adapter = TypeAdapter(list[SummaryActivity])
+            activities = adapter.validate_python(response.json())
+
+            if not activities:
+                break
+
+            # Filter by activity type
+            matching = [a for a in activities if a.type == activity_type]
+            filtered_activities.extend(matching)
+            api_calls += 1
+            page += 1
+
+        # Limit to max_activities
+        if max_activities:
+            filtered_activities = filtered_activities[:max_activities]
+
+        return filtered_activities
+
     async def get_activity(self, activity_id: int) -> DetailedActivity:
         """Get detailed information about a specific activity."""
         response = await self._request("GET", f"/activities/{activity_id}")

@@ -232,27 +232,26 @@ async def _list_activities(
     # Fetch limit+1 to detect if there are more pages
     fetch_limit = limit + 1
 
-    # Get activities using API-side time filtering
-    # For cursor-based pagination, we fetch activities across multiple pages up to current_page
-    # then take only the items for the current page
-    # This isn't efficient but maintains compatibility with time-based filtering
-    total_to_fetch = current_page * limit + 1  # Fetch through current page + 1 to detect has_more
-
-    all_activities = await client.get_all_activities(
-        after=start,
-        before=end,
-        per_page=200,  # Use larger page size for efficiency
-        max_activities=total_to_fetch,
-        max_api_calls=current_page + 1,  # Allow enough calls to reach current page
-    )
+    if activity_type:
+        all_activities = await client.get_activities_by_type(
+            activity_type=activity_type,
+            after=start,
+            before=end,
+            per_page=200,
+            max_activities=current_page * limit + 1,
+        )
+    else:
+        all_activities = await client.get_all_activities(
+            after=start,
+            before=end,
+            per_page=200,
+            max_activities=current_page * limit + 1,
+            max_api_calls=current_page + 1,
+        )
 
     # Calculate offset for current page (0-indexed pages)
     offset = (current_page - 1) * limit
     activities = all_activities[offset : offset + fetch_limit]
-
-    # Filter by activity type if specified
-    if activity_type:
-        activities = [a for a in activities if a.type == activity_type]
 
     # Check if there are more results
     has_more = len(activities) > limit
