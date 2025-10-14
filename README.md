@@ -16,8 +16,8 @@ This MCP server provides 11 tools to interact with your Strava account, organize
 
 Additionally, the server provides:
 
-- **1 MCP Resource** - Athlete profile with stats and zones for ongoing context
-- **5 MCP Prompts** - Templates for common queries (training analysis, segment performance, activity analysis, run comparison, training summary)
+- 1 MCP Resource - Athlete profile with stats and zones for ongoing context
+- 5 MCP Prompts - Templates for common queries (training analysis, segment performance, activity analysis, run comparison, training summary)
 
 ## Prerequisites
 
