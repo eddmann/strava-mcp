@@ -97,18 +97,22 @@ async def analyze_training(
         start, end = parse_time_range(period)
 
         async with StravaClient(config) as client:
-            # Get activities with reduced limits
-            activities = await client.get_all_activities(
-                after=start,
-                before=end,
-                per_page=200,
-                max_activities=max_activities,
-                max_api_calls=5,
-            )
-
-            # Filter by activity type if specified
             if activity_type:
-                activities = [a for a in activities if a.type == activity_type]
+                activities = await client.get_activities_by_type(
+                    activity_type=activity_type,
+                    after=start,
+                    before=end,
+                    per_page=200,
+                    max_activities=max_activities,
+                    max_api_calls=min(10, (max_activities // 50) + 2),
+                )
+            else:
+                activities = await client.get_all_activities(
+                    after=start,
+                    before=end,
+                    per_page=200,
+                    max_activities=max_activities,
+                )
 
             if not activities:
                 metadata = {"period": get_range_description(period)}
@@ -251,8 +255,10 @@ async def analyze_training(
 
             # Weekly trend
             if len(weekly_trends) >= 2:
-                first_week_distance = weekly_trends[0]["distance"]["meters"]  # type: ignore
-                last_week_distance = weekly_trends[-1]["distance"]["meters"]  # type: ignore
+                # type: ignore
+                first_week_distance = weekly_trends[0]["distance"]["meters"]
+                # type: ignore
+                last_week_distance = weekly_trends[-1]["distance"]["meters"]
                 if float(last_week_distance) > float(first_week_distance) * 1.2:
                     insights.append("Training volume increasing over time")
                 elif float(last_week_distance) < float(first_week_distance) * 0.8:

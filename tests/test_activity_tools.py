@@ -467,3 +467,118 @@ class TestActivityPagination:
         # Should use default limit of 5 for enrichments
         assert data["pagination"]["limit"] == 5
         assert len(data["data"]["activities"]) == 5
+
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_query_activities_pagination_with_activity_type_filter(
+        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
+    ):
+        """Test pagination with activity_type filter applied correctly."""
+        from datetime import datetime
+
+        from httpx import Response
+
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        # Create 47 mixed activities (30 Runs, 17 Rides)
+        now = datetime.now(UTC)
+        activities = []
+        for i in range(47):
+            activities.append(
+                {
+                    **SUMMARY_ACTIVITY,
+                    "id": 3000 + i,
+                    "name": f"Activity {i}",
+                    "type": "Run" if i < 30 else "Ride",
+                    "start_date_local": now.isoformat(),
+                }
+            )
+
+        def activities_response(request):
+            return Response(200, json=activities)
+
+        respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
+
+        # Request first page of Runs with limit=10
+        result = await query_activities(time_range="90d", activity_type="Run", limit=10)
+        data = json.loads(result)
+
+        # Should return exactly 10 Runs
+        assert len(data["data"]["activities"]) == 10
+        assert all(a["type"] == "Run" for a in data["data"]["activities"])
+
+        # Should have pagination (30 total Runs, showing first 10)
+        assert data["pagination"]["has_more"] is True
+        assert data["pagination"]["cursor"] is not None
+        assert data["pagination"]["limit"] == 10
+        assert data["pagination"]["returned"] == 10
+
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_query_activities_sparse_type_filtering(
+        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
+    ):
+        """Test pagination with sparse activity type (requires multiple API pages)."""
+        from datetime import datetime
+
+        from httpx import Response
+
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        # Create activities where Runs are sparse (1 Run per 10 activities)
+        # Total: 300 activities, 30 Runs
+        now = datetime.now(UTC)
+
+        def activities_response(request):
+            # Simulate pagination - each page returns 200 activities
+            page = request.url.params.get("page", "1")
+            page_num = int(page)
+
+            if page_num == 1:
+                # First 200 activities: 20 Runs
+                activities = []
+                for i in range(200):
+                    activities.append(
+                        {
+                            **SUMMARY_ACTIVITY,
+                            "id": 4000 + i,
+                            "name": f"Activity {i}",
+                            "type": "Run" if i % 10 == 0 else "Ride",
+                            "start_date_local": now.isoformat(),
+                        }
+                    )
+                return Response(200, json=activities)
+            elif page_num == 2:
+                # Next 100 activities: 10 Runs
+                activities = []
+                for i in range(100):
+                    activities.append(
+                        {
+                            **SUMMARY_ACTIVITY,
+                            "id": 5000 + i,
+                            "name": f"Activity {200 + i}",
+                            "type": "Run" if i % 10 == 0 else "Ride",
+                            "start_date_local": now.isoformat(),
+                        }
+                    )
+                return Response(200, json=activities)
+            else:
+                return Response(200, json=[])
+
+        respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
+
+        # Request first page of 10 Runs - should make multiple API calls to find them
+        result = await query_activities(time_range="90d", activity_type="Run", limit=10)
+        data = json.loads(result)
+
+        # Should return exactly 10 Runs (from first 100 mixed activities)
+        assert len(data["data"]["activities"]) == 10
+        assert all(a["type"] == "Run" for a in data["data"]["activities"])
+
+        # Should have pagination (30 total Runs available)
+        assert data["pagination"]["has_more"] is True
+        assert data["pagination"]["cursor"] is not None
+        assert data["pagination"]["limit"] == 10
+        assert data["pagination"]["returned"] == 10
