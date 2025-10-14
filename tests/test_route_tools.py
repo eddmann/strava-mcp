@@ -434,3 +434,129 @@ class TestExportRoute:
 
         expected_size = len(GPX_DATA.encode("utf-8"))
         assert data["data"]["size_bytes"] == expected_size
+
+
+class TestRoutePagination:
+    """Test pagination behavior for route tools."""
+
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_query_routes_pagination_has_more(
+        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
+    ):
+        """Test routes pagination with more pages available."""
+        from httpx import Response
+
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        # Stub athlete endpoint
+        stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
+
+        # Create 11 routes (limit+1 to trigger has_more)
+        routes = [{**ROUTE, "id": 7000 + i, "name": f"Route {i}"} for i in range(11)]
+
+        def routes_response(request):
+            return Response(200, json=routes)
+
+        athlete_id = DETAILED_ATHLETE["id"]
+        respx_mock.get(f"/athletes/{athlete_id}/routes").mock(side_effect=routes_response)
+
+        result = await query_routes(limit=10)
+        data = json.loads(result)
+
+        assert "pagination" in data
+        assert data["pagination"]["has_more"] is True
+        assert data["pagination"]["cursor"] is not None
+        assert data["pagination"]["limit"] == 10
+        assert len(data["data"]["routes"]) == 10
+
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_query_routes_pagination_last_page(
+        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
+    ):
+        """Test routes pagination on last page."""
+        from httpx import Response
+
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        # Stub athlete endpoint
+        stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
+
+        # Create only 5 routes (less than limit)
+        routes = [{**ROUTE, "id": 8000 + i, "name": f"Route {i}"} for i in range(5)]
+
+        def routes_response(request):
+            return Response(200, json=routes)
+
+        athlete_id = DETAILED_ATHLETE["id"]
+        respx_mock.get(f"/athletes/{athlete_id}/routes").mock(side_effect=routes_response)
+
+        result = await query_routes(limit=10)
+        data = json.loads(result)
+
+        assert "pagination" in data
+        assert data["pagination"]["has_more"] is False
+        assert data["pagination"]["cursor"] is None
+        assert data["pagination"]["returned"] == 5
+
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_query_routes_pagination_with_cursor(
+        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
+    ):
+        """Test routes pagination using cursor."""
+        from httpx import Response
+
+        from strava_mcp.pagination import encode_cursor
+
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        # Stub athlete endpoint
+        stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
+
+        # Create routes for page 2
+        routes_page2 = [{**ROUTE, "id": 9000 + i, "name": f"Route Page2 {i}"} for i in range(8)]
+
+        def routes_response(request):
+            # Verify page parameter is 2
+            assert request.url.params.get("page") == "2"
+            return Response(200, json=routes_page2)
+
+        athlete_id = DETAILED_ATHLETE["id"]
+        respx_mock.get(f"/athletes/{athlete_id}/routes").mock(side_effect=routes_response)
+
+        cursor = encode_cursor(2)
+        result = await query_routes(cursor=cursor, limit=10)
+        data = json.loads(result)
+
+        # Debug: print response if error
+        if "error" in data:
+            print(f"ERROR: {data}")
+
+        assert "pagination" in data, f"Response: {data}"
+        assert data["pagination"]["returned"] == 8
+        assert data["pagination"]["has_more"] is False
+
+    @patch("strava_mcp.tools.routes.load_config")
+    @patch("strava_mcp.tools.routes.validate_credentials")
+    async def test_query_routes_limit_validation(
+        self, mock_validate, mock_load_config, mock_config
+    ):
+        """Test route limit validation."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        # Test limit too high
+        result = await query_routes(limit=100)
+        data = json.loads(result)
+        assert "error" in data
+        assert "limit" in data["error"]["message"].lower()
+
+        # Test limit too low
+        result = await query_routes(limit=0)
+        data = json.loads(result)
+        assert "error" in data

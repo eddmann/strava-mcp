@@ -165,7 +165,7 @@ class StravaClient:
         after: datetime | None = None,
         per_page: int = 30,
         max_activities: int | None = None,
-        max_api_calls: int | None = None,
+        max_api_calls: int = 5,
     ) -> list[SummaryActivity]:
         """Get all activities with optional date filtering."""
         all_activities: list[SummaryActivity] = []
@@ -179,7 +179,7 @@ class StravaClient:
             params["after"] = int(after.timestamp())
 
         while True:
-            if max_api_calls and api_calls >= max_api_calls:
+            if api_calls >= max_api_calls:
                 break
 
             params["page"] = page

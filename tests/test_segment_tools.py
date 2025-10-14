@@ -594,26 +594,6 @@ class TestGetSegmentLeaderboard:
 
     @patch("strava_mcp.tools.segments.load_config")
     @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_get_segment_leaderboard_with_pagination(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
-        """Test segment leaderboard with pagination."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
-        segment_id = 229781
-        stub_api.stub_segment_leaderboard_endpoint(
-            segment_id, SEGMENT_LEADERBOARD, page=2, per_page=10
-        )
-
-        result = await get_segment_leaderboard(segment_id, page=2, per_page=10)
-        data = json.loads(result)
-
-        assert data["metadata"]["page"] == 2
-        assert data["metadata"]["per_page"] == 10
-
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
     async def test_get_segment_leaderboard_empty(
         self, mock_validate, mock_load_config, mock_config, stub_api
     ):
@@ -667,3 +647,153 @@ class TestGetSegmentLeaderboard:
 
         assert "error" in data
         assert "authentication_required" in data["error"]["type"]
+
+
+class TestSegmentPagination:
+    """Test pagination behavior for segment tools."""
+
+    @patch("strava_mcp.tools.segments.load_config")
+    @patch("strava_mcp.tools.segments.validate_credentials")
+    async def test_query_segments_pagination_starred(
+        self, mock_validate, mock_load_config, mock_config, respx_mock
+    ):
+        """Test pagination for starred segments list."""
+        from httpx import Response
+
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        # Create 11 segments (limit+1 to trigger has_more)
+        segments = [{**SUMMARY_SEGMENT, "id": 5000 + i, "name": f"Segment {i}"} for i in range(11)]
+
+        def segments_response(request):
+            return Response(200, json=segments)
+
+        respx_mock.get("/segments/starred").mock(side_effect=segments_response)
+
+        result = await query_segments(starred_only=True, limit=10)
+        data = json.loads(result)
+
+        assert "pagination" in data
+        assert data["pagination"]["has_more"] is True
+        assert data["pagination"]["cursor"] is not None
+        assert data["pagination"]["limit"] == 10
+        assert len(data["data"]["segments"]) == 10
+
+    @patch("strava_mcp.tools.segments.load_config")
+    @patch("strava_mcp.tools.segments.validate_credentials")
+    async def test_query_segments_explore_pagination(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test client-side pagination for explore segments."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        # Create 25 segments in explore result
+        all_segments = [
+            {
+                "id": 6000 + i,
+                "name": f"Segment {i}",
+                "climb_category": 0,
+                "climb_category_desc": "NC",
+                "avg_grade": 2.5,
+                "distance": 1000,
+                "elev_difference": 25,
+                "starred": False,
+            }
+            for i in range(25)
+        ]
+
+        explore_result = {"segments": all_segments}
+
+        stub_api.stub_explore_segments_endpoint(explore_result)
+
+        # First page (limit=10)
+        result = await query_segments(
+            bounds="37.77,-122.45,37.80,-122.40",
+            limit=10,
+        )
+        data = json.loads(result)
+
+        assert data["pagination"]["has_more"] is True
+        assert len(data["data"]["segments"]) == 10
+        assert data["data"]["segments"][0]["id"] == 6000
+
+        # Second page using cursor
+        from strava_mcp.pagination import encode_cursor
+
+        cursor = encode_cursor(2, {"bounds": "37.77,-122.45,37.80,-122.40"})
+
+        stub_api.stub_explore_segments_endpoint(explore_result)
+
+        result = await query_segments(
+            bounds="37.77,-122.45,37.80,-122.40",
+            cursor=cursor,
+            limit=10,
+        )
+        data = json.loads(result)
+
+        assert len(data["data"]["segments"]) == 10
+        assert data["data"]["segments"][0]["id"] == 6010  # Offset of 10
+
+    @patch("strava_mcp.tools.segments.load_config")
+    @patch("strava_mcp.tools.segments.validate_credentials")
+    async def test_get_segment_leaderboard_pagination_has_more(
+        self, mock_validate, mock_load_config, mock_config, stub_api
+    ):
+        """Test leaderboard pagination returns correct metadata."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        segment_id = 229781
+
+        # Create leaderboard with 51 entries (more than default 50)
+        leaderboard_data = {
+            **SEGMENT_LEADERBOARD,
+            "entry_count": 100,
+            "entries": [
+                {
+                    **SEGMENT_LEADERBOARD["entries"][0],
+                    "rank": i + 1,
+                    "athlete_name": f"Athlete {i}",
+                }
+                for i in range(51)  # limit+1
+            ],
+        }
+
+        stub_api.stub_segment_leaderboard_endpoint(
+            segment_id,
+            leaderboard_data,
+            page=1,
+            per_page=51,
+        )
+
+        result = await get_segment_leaderboard(segment_id, limit=50)
+        data = json.loads(result)
+
+        assert "pagination" in data
+        assert data["pagination"]["has_more"] is True
+        assert data["pagination"]["cursor"] is not None
+        assert data["pagination"]["limit"] == 50
+        assert len(data["data"]["entries"]) == 50  # Should trim to limit
+
+    @patch("strava_mcp.tools.segments.load_config")
+    @patch("strava_mcp.tools.segments.validate_credentials")
+    async def test_query_segments_limit_validation(
+        self, mock_validate, mock_load_config, mock_config
+    ):
+        """Test segment limit validation."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        # Test limit too high
+        result = await query_segments(starred_only=True, limit=100)
+        data = json.loads(result)
+        assert "error" in data
+        assert "limit" in data["error"]["message"].lower()
+
+        # Test efforts_limit too high
+        result = await query_segments(segment_id=123, include_efforts=True, efforts_limit=100)
+        data = json.loads(result)
+        assert "error" in data
+        assert "efforts_limit" in data["error"]["message"].lower()

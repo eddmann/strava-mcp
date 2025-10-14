@@ -13,22 +13,29 @@ from ..response_builder import ResponseBuilder
 
 async def query_routes(
     route_id: Annotated[int | None, "Get specific route by ID"] = None,
-    limit: Annotated[int, "Maximum number of routes to return"] = 30,
+    cursor: Annotated[str | None, "Pagination cursor from previous response"] = None,
+    limit: Annotated[int, "Max routes per page (1-50, default 10)"] = 10,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
 ) -> str:
-    """Query Strava routes.
+    """Query Strava routes with pagination support.
 
     This unified tool can:
     - Get a single route by ID
-    - List all routes for the authenticated athlete
+    - List all routes for the authenticated athlete with pagination
 
     Returns: JSON string with structure:
     {
         "data": {
             "route": {...}          // Single route mode
             OR
-            "routes": [...],        // List mode
+            "routes": [...],        // List mode (max 50 items)
             "count": N
+        },
+        "pagination": {             // List mode only
+            "cursor": "...",
+            "has_more": true,
+            "limit": 10,
+            "returned": 10
         },
         "metadata": {
             "fetched_at": "ISO timestamp",
@@ -38,7 +45,8 @@ async def query_routes(
 
     Examples:
         - Get specific route: query_routes(route_id=12345)
-        - List all routes: query_routes()
+        - List routes: query_routes()
+        - Paginate results: query_routes(cursor="eyJwYWdl...")
     """
     config = load_config()
 
@@ -49,6 +57,13 @@ async def query_routes(
             suggestions=["Run 'strava-mcp-auth' to set up authentication"],
         )
 
+    # Validate limit
+    if limit < 1 or limit > 50:
+        return ResponseBuilder.build_error_response(
+            f"Invalid limit: {limit}. Must be between 1 and 50.",
+            error_type="validation_error",
+        )
+
     try:
         async with StravaClient(config) as client:
             # Single route mode
@@ -56,7 +71,7 @@ async def query_routes(
                 return await _get_single_route(client, route_id, unit)
 
             # List routes mode
-            return await _list_routes(client, limit, unit)
+            return await _list_routes(client, limit, cursor, unit)
 
     except StravaAPIError as e:
         error_type = "api_error"
@@ -149,12 +164,32 @@ async def _get_single_route(
     return ResponseBuilder.build_response(data, metadata=metadata)
 
 
-async def _list_routes(client: StravaClient, limit: int, unit: MeasurementPreference) -> str:
-    """List all routes."""
-    routes = await client.list_athlete_routes(page=1, per_page=limit)
+async def _list_routes(
+    client: StravaClient, limit: int, cursor: str | None, unit: MeasurementPreference
+) -> str:
+    """List all routes with pagination."""
+    from ..pagination import build_pagination_info, decode_cursor
+
+    # Parse cursor
+    current_page = 1
+    if cursor:
+        try:
+            cursor_data = decode_cursor(cursor)
+            current_page = cursor_data.get("page", 1)
+        except ValueError:
+            return ResponseBuilder.build_error_response(
+                "Invalid pagination cursor",
+                error_type="validation_error",
+            )
+
+    # Fetch limit+1 to detect if there are more pages
+    routes = await client.list_athlete_routes(page=current_page, per_page=limit + 1)
+
+    has_more = len(routes) > limit
+    routes = routes[:limit]
 
     formatted_routes: list[dict[str, Any]] = []
-    for route in routes[:limit]:
+    for route in routes:
         formatted_routes.append(
             {
                 "id": route.id,
@@ -186,10 +221,16 @@ async def _list_routes(client: StravaClient, limit: int, unit: MeasurementPrefer
 
     metadata: dict[str, Any] = {
         "query_type": "list_routes",
-        "count": len(formatted_routes),
     }
 
-    return ResponseBuilder.build_response(data, metadata=metadata)
+    pagination = build_pagination_info(
+        returned_count=len(formatted_routes),
+        limit=limit,
+        current_page=current_page,
+        has_more=has_more,
+    )
+
+    return ResponseBuilder.build_response(data, metadata=metadata, pagination=pagination)
 
 
 async def export_route(

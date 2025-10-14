@@ -77,9 +77,15 @@ uv run pyright
 - Type aliases for enums (ActivityType, MeasurementPreference, Sex, etc.)
 
 **response_builder.py** - Structured JSON output
-- All tools return consistent JSON structure: `{"data": {...}, "analysis": {...}, "metadata": {...}}`
+- All tools return consistent JSON structure: `{"data": {...}, "pagination": {...}, "analysis": {...}, "metadata": {...}}`
 - Formatting utilities that provide both raw and human-readable values (e.g., distance in meters + formatted string)
 - Error responses follow standard format: `{"error": {"message": "...", "type": "...", "suggestions": [...]}}`
+
+**pagination.py** - Pagination utilities
+- Cursor-based pagination support for all list-returning tools
+- `encode_cursor()` / `decode_cursor()` for opaque cursor strings
+- `build_pagination_info()` generates standardized pagination metadata
+- Cursors encode page number and query filters for continuity
 
 **formatters.py** - Unit conversion and formatting
 - Functions for formatting distance, duration, pace, speed, elevation
@@ -106,6 +112,7 @@ All tools follow a consistent pattern:
 - Use async context manager for client: `async with StravaClient(config) as client:`
 - Return JSON string via `ResponseBuilder.build_response()` or `ResponseBuilder.build_error_response()`
 - Handle `StravaAPIError` exceptions with appropriate error messages
+- List-returning tools support cursor-based pagination with `cursor` and `limit` parameters
 
 ### Testing Strategy
 
@@ -136,11 +143,58 @@ When adding tests:
 
 **Structured JSON output** - All tools return consistent JSON structure with raw + formatted values (e.g., distance in meters + "10.5 km")
 
+**Cursor-based pagination** - List tools use opaque cursors for reliable multi-page queries with reduced default limits (10-50 items)
+
 **Error handling hierarchy** - `StravaAPIError` → `ResponseBuilder.build_error_response()` → JSON with error type and suggestions
 
 **Automatic token refresh** - Client handles token refresh transparently without exposing OAuth details to tools
 
 **Type safety** - Comprehensive Pydantic models for all API responses ensure type safety throughout the codebase
+
+## Pagination
+
+All list-returning tools support cursor-based pagination to manage response sizes:
+
+### Default Limits
+- **Activities**: 10 items (5 with enrichments like streams/laps/zones)
+- **Segments**: 10 items
+- **Routes**: 10 items
+- **Leaderboard**: 50 items (max 200)
+
+### Usage Pattern
+```python
+# First page
+result1 = query_activities(time_range="30d")
+data1 = json.loads(result1)
+
+# Check if more pages exist
+if data1["pagination"]["has_more"]:
+    cursor = data1["pagination"]["cursor"]
+
+    # Next page
+    result2 = query_activities(time_range="30d", cursor=cursor)
+```
+
+### Pagination Response Structure
+```json
+{
+  "data": {
+    "activities": [...]
+  },
+  "pagination": {
+    "cursor": "eyJwYWdl...",  // Use for next request
+    "has_more": true,
+    "limit": 10,
+    "returned": 10
+  },
+  "metadata": {...}
+}
+```
+
+### Implementation Notes
+- Cursors are opaque Base64-encoded JSON containing page number and filters
+- Tools fetch `limit+1` items to detect if more pages exist
+- Analysis tools (`analyze_training`, `find_similar_activities`) have reduced internal limits (200-300 max activities)
 
 ## Configuration Files
 

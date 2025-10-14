@@ -22,6 +22,7 @@ from .formatters import (
     format_speed,
 )
 from .models import MeasurementPreference
+from .pagination import PaginationInfo
 
 
 def _convert_datetimes(obj: Any) -> Any:  # type: ignore[misc]
@@ -44,6 +45,7 @@ class ResponseBuilder:
         analysis: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
         query_type: str | None = None,
+        pagination: PaginationInfo | dict[str, Any] | None = None,
     ) -> str:
         """Build standardized JSON response.
 
@@ -52,12 +54,14 @@ class ResponseBuilder:
             analysis: Optional analysis and insights
             metadata: Optional metadata (will be enriched with timestamp)
             query_type: Optional query type for metadata
+            pagination: Optional pagination metadata
 
         Returns:
             JSON string with structure:
             {
                 "data": {...},
                 "analysis": {...},
+                "pagination": {...},
                 "metadata": {
                     "fetched_at": "ISO timestamp",
                     "query_type": "...",
@@ -75,6 +79,9 @@ class ResponseBuilder:
 
         if converted_analysis:
             response["analysis"] = converted_analysis
+
+        if pagination:
+            response["pagination"] = pagination
 
         # Build metadata with timestamp
         meta = metadata or {}
