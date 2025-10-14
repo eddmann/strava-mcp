@@ -24,6 +24,10 @@ async def analyze_training(
     activity_type: Annotated[
         str | None, "Filter by activity type (e.g., 'Run', 'Ride', 'Swim')"
     ] = None,
+    max_activities: Annotated[
+        int,
+        "Max activities to analyze (1-500, default 200). Higher values may be slow.",
+    ] = 200,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
 ) -> str:
     """Analyze training over a period with aggregated metrics and trends.
@@ -81,18 +85,25 @@ async def analyze_training(
             suggestions=["Run 'strava-mcp-auth' to set up authentication"],
         )
 
+    # Validate max_activities
+    if max_activities < 1 or max_activities > 500:
+        return ResponseBuilder.build_error_response(
+            f"Invalid max_activities: {max_activities}. Must be between 1 and 500.",
+            error_type="validation_error",
+        )
+
     try:
         # Parse time range
         start, end = parse_time_range(period)
 
         async with StravaClient(config) as client:
-            # Get activities
+            # Get activities with reduced limits
             activities = await client.get_all_activities(
                 after=start,
                 before=end,
                 per_page=200,
-                max_activities=1000,
-                max_api_calls=10,
+                max_activities=max_activities,
+                max_api_calls=5,
             )
 
             # Filter by activity type if specified
@@ -472,7 +483,8 @@ async def find_similar_activities(
         str,
         "Similarity criteria (comma-separated: 'type', 'distance', 'elevation', 'duration')",
     ] = "type,distance",
-    limit: Annotated[int, "Maximum number of similar activities to return"] = 10,
+    limit: Annotated[int, "Max similar activities to return (1-20, default 10)"] = 10,
+    search_days: Annotated[int, "Days to search back (1-365, default 90)"] = 90,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
 ) -> str:
     """Find activities similar to a reference activity.
@@ -506,6 +518,18 @@ async def find_similar_activities(
             suggestions=["Run 'strava-mcp-auth' to set up authentication"],
         )
 
+    # Validate inputs
+    if limit < 1 or limit > 20:
+        return ResponseBuilder.build_error_response(
+            f"Invalid limit: {limit}. Must be between 1 and 20.",
+            error_type="validation_error",
+        )
+    if search_days < 1 or search_days > 365:
+        return ResponseBuilder.build_error_response(
+            f"Invalid search_days: {search_days}. Must be between 1 and 365.",
+            error_type="validation_error",
+        )
+
     try:
         # Parse criteria
         criteria_list = [c.strip().lower() for c in criteria.split(",")]
@@ -521,13 +545,13 @@ async def find_similar_activities(
             # Get reference activity
             reference = await client.get_activity(activity_id)
 
-            # Get recent activities (last 180 days)
-            start = datetime.now() - timedelta(days=180)
+            # Get recent activities with reduced search window
+            start = datetime.now() - timedelta(days=search_days)
             activities = await client.get_all_activities(
                 after=start,
                 per_page=200,
-                max_activities=500,
-                max_api_calls=5,
+                max_activities=300,
+                max_api_calls=3,
             )
 
             # Filter out reference activity

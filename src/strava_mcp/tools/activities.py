@@ -28,30 +28,42 @@ async def query_activities(
     ] = None,
     include_laps: Annotated[bool, "Include lap data"] = False,
     include_zones: Annotated[bool, "Include heart rate and power zones"] = False,
+    cursor: Annotated[
+        str | None, "Pagination cursor from previous response (for continuing multi-page queries)"
+    ] = None,
     limit: Annotated[
-        int,
-        "Maximum number of activities to return (1-4000). For large time ranges like 'ytd', use higher limits (e.g., 500-1000)",
-    ] = 30,
+        int | None,
+        "Maximum activities per page (1-50). Default: 10 for basic queries, 5 with enrichments. "
+        "Use pagination cursor for large datasets.",
+    ] = None,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
 ) -> str:
-    """Query Strava activities with optional enrichment.
+    """Query Strava activities with pagination support.
 
     This unified tool can:
     - Get a single activity by ID with optional enrichment
-    - List activities within a time range with filtering
+    - List activities within a time range with filtering and pagination
     - Include streams, laps, and zones in a single call
 
-    Note: For large time ranges (e.g., 'ytd', '90d'), increase the limit parameter
-    to ensure all activities are fetched. The default limit of 30 may only return
-    the most recent activities. Recommend using limit=500-1000 for year-to-date queries.
+    Pagination:
+    For large time ranges, use pagination to retrieve all activities:
+    1. Make initial request without cursor
+    2. Check response["pagination"]["has_more"]
+    3. Use response["pagination"]["cursor"] for next page
 
     Returns: JSON string with structure:
     {
         "data": {
             "activity": {...}       // Single activity mode
             OR
-            "activities": [...],    // List mode
+            "activities": [...],    // List mode (max 50 items)
             "aggregated": {...}     // Summary metrics
+        },
+        "pagination": {             // List mode only
+            "cursor": "...",        // Use for next page
+            "has_more": true,
+            "limit": 10,
+            "returned": 10
         },
         "metadata": {
             "fetched_at": "ISO timestamp",
@@ -67,6 +79,7 @@ async def query_activities(
         - Get specific activity: query_activities(activity_id=12345)
         - Get with laps and zones: query_activities(activity_id=12345, include_laps=True, include_zones=True)
         - Get runs from last month: query_activities(time_range="30d", activity_type="Run")
+        - Paginate large results: query_activities(time_range="ytd", cursor="eyJwYWdl...")
     """
     config = load_config()
 
@@ -77,10 +90,17 @@ async def query_activities(
             suggestions=["Run 'strava-mcp-auth' to set up authentication"],
         )
 
+    # Determine default limit based on enrichments
+    if limit is None:
+        if include_streams or include_laps or include_zones:
+            limit = 5  # Heavy enrichments need smaller pages
+        else:
+            limit = 10  # Basic queries
+
     # Validate limit
-    if limit < 1 or limit > 4000:
+    if limit < 1 or limit > 50:
         return ResponseBuilder.build_error_response(
-            f"Invalid limit: {limit}. Must be between 1 and 4000.",
+            f"Invalid limit: {limit}. Must be between 1 and 50.",
             error_type="validation_error",
         )
 
@@ -98,9 +118,7 @@ async def query_activities(
                 )
 
             # List activities mode
-            return await _list_activities(
-                client, time_range, activity_type, limit, unit
-            )
+            return await _list_activities(client, time_range, activity_type, limit, cursor, unit)
 
     except ValueError as e:
         return ResponseBuilder.build_error_response(
@@ -190,37 +208,69 @@ async def _list_activities(
     time_range: str,
     activity_type: str | None,
     limit: int,
+    cursor: str | None,
     unit: MeasurementPreference,
 ) -> str:
-    """List activities within a time range."""
+    """List activities within a time range with pagination."""
+    from ..pagination import build_pagination_info, decode_cursor
+
+    # Parse cursor
+    current_page = 1
+    if cursor:
+        try:
+            cursor_data = decode_cursor(cursor)
+            current_page = cursor_data.get("page", 1)
+        except ValueError:
+            return ResponseBuilder.build_error_response(
+                "Invalid pagination cursor",
+                error_type="validation_error",
+            )
+
     # Parse time range
     start, end = parse_time_range(time_range)
 
-    # For large time ranges (>60 days), use larger per_page to reduce API calls
-    # and increase max_api_calls to ensure we get all activities within the range
-    days_span = (end - start).days
-    if days_span > 60:
-        per_page = 200  # Max allowed by Strava API
-        max_api_calls = 20  # Allow more API calls for large ranges
-    else:
-        per_page = min(limit, 200)
-        max_api_calls = 10
+    # Fetch limit+1 to detect if there are more pages
+    fetch_limit = limit + 1
 
-    # Get activities
-    activities = await client.get_all_activities(
+    # Get activities using API-side time filtering
+    # For cursor-based pagination, we fetch activities across multiple pages up to current_page
+    # then take only the items for the current page
+    # This isn't efficient but maintains compatibility with time-based filtering
+    total_to_fetch = current_page * limit + 1  # Fetch through current page + 1 to detect has_more
+
+    all_activities = await client.get_all_activities(
         after=start,
         before=end,
-        per_page=per_page,
-        max_activities=limit,
-        max_api_calls=max_api_calls,
+        per_page=200,  # Use larger page size for efficiency
+        max_activities=total_to_fetch,
+        max_api_calls=current_page + 1,  # Allow enough calls to reach current page
     )
+
+    # Calculate offset for current page (0-indexed pages)
+    offset = (current_page - 1) * limit
+    activities = all_activities[offset : offset + fetch_limit]
 
     # Filter by activity type if specified
     if activity_type:
         activities = [a for a in activities if a.type == activity_type]
 
-    # Limit results
+    # Check if there are more results
+    has_more = len(activities) > limit
     activities = activities[:limit]
+
+    # Build pagination filters
+    pagination_filters: dict[str, Any] = {"time_range": time_range}
+    if activity_type:
+        pagination_filters["activity_type"] = activity_type
+
+    # Build pagination info
+    pagination = build_pagination_info(
+        returned_count=len(activities),
+        limit=limit,
+        current_page=current_page,
+        has_more=has_more,
+        filters=pagination_filters,
+    )
 
     if not activities:
         data: dict[str, Any] = {"activities": [], "aggregated": {"count": 0}}
@@ -231,12 +281,11 @@ async def _list_activities(
                 "start": start.isoformat(),
                 "end": end.isoformat(),
             },
-            "count": 0,
         }
         if activity_type:
             metadata["activity_type"] = activity_type
 
-        return ResponseBuilder.build_response(data, metadata=metadata)
+        return ResponseBuilder.build_response(data, metadata=metadata, pagination=pagination)
 
     # Format activities
     formatted_activities: list[dict[str, Any]] = [
@@ -258,13 +307,12 @@ async def _list_activities(
             "start": start.isoformat(),
             "end": end.isoformat(),
         },
-        "count": len(formatted_activities),
     }
 
     if activity_type:
         metadata["activity_type"] = activity_type
 
-    return ResponseBuilder.build_response(data, metadata=metadata)
+    return ResponseBuilder.build_response(data, metadata=metadata, pagination=pagination)
 
 
 async def get_activity_social(
@@ -273,7 +321,7 @@ async def get_activity_social(
     include_kudos: Annotated[bool, "Include kudos"] = True,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
 ) -> str:
-    """Get social data for an activity (comments and kudos).
+    """Get social data (comments and kudos) for an activity.
 
     Returns: JSON string with structure:
     {

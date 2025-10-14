@@ -1,6 +1,7 @@
 """Comprehensive tests for activity tools."""
 
 import json
+from datetime import UTC
 from unittest.mock import patch
 
 import pytest
@@ -300,3 +301,169 @@ class TestGetActivitySocial:
         assert "error" in data
         assert "not_found" in data["error"]["type"]
         assert "suggestions" in data["error"]
+
+
+class TestActivityPagination:
+    """Test pagination behavior for activity tools."""
+
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_query_activities_pagination_first_page(
+        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
+    ):
+        """Test first page of paginated activities returns cursor."""
+        from datetime import datetime
+
+        from httpx import Response
+
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        # Create 11 activities (limit+1 to trigger has_more) with recent dates
+        now = datetime.now(UTC)
+        activities = [
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 1000 + i,
+                "name": f"Activity {i}",
+                "start_date_local": now.isoformat(),
+            }
+            for i in range(11)
+        ]
+
+        def activities_response(request):
+            return Response(200, json=activities)
+
+        respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
+
+        # Request with limit=10 using a wide time range
+        result = await query_activities(time_range="90d", limit=10)
+        data = json.loads(result)
+
+        # Should have pagination
+        assert "pagination" in data
+        assert data["pagination"]["has_more"] is True
+        assert data["pagination"]["cursor"] is not None
+        assert data["pagination"]["limit"] == 10
+        assert data["pagination"]["returned"] == 10
+
+        # Should only return 10 items
+        assert len(data["data"]["activities"]) == 10
+
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_query_activities_pagination_second_page(
+        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
+    ):
+        """Test using cursor to get second page."""
+        from datetime import datetime
+
+        from httpx import Response
+
+        from strava_mcp.pagination import encode_cursor
+
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        # Simulate second page having fewer items
+        now = datetime.now(UTC)
+        activities_page2 = [
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 2000 + i,
+                "name": f"Activity {i}",
+                "start_date_local": now.isoformat(),
+            }
+            for i in range(5)
+        ]
+
+        def activities_response(request):
+            return Response(200, json=activities_page2)
+
+        respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
+
+        # Create cursor for page 2
+        cursor = encode_cursor(2, {"time_range": "90d"})
+
+        result = await query_activities(time_range="90d", cursor=cursor, limit=10)
+        data = json.loads(result)
+
+        # Should not have more pages
+        assert data["pagination"]["has_more"] is False
+        assert data["pagination"]["cursor"] is None
+        assert data["pagination"]["returned"] == 5
+
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_query_activities_pagination_invalid_cursor(
+        self, mock_validate, mock_load_config, mock_config
+    ):
+        """Test invalid cursor returns error."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        result = await query_activities(cursor="invalid_cursor_string")
+        data = json.loads(result)
+
+        assert "error" in data
+        assert data["error"]["type"] == "validation_error"
+        assert "cursor" in data["error"]["message"].lower()
+
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_query_activities_limit_validation(
+        self, mock_validate, mock_load_config, mock_config
+    ):
+        """Test limit parameter validation."""
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        # Test limit too high
+        result = await query_activities(limit=100)
+        data = json.loads(result)
+        assert "error" in data
+        assert "limit" in data["error"]["message"].lower()
+
+        # Test limit too low
+        result = await query_activities(limit=0)
+        data = json.loads(result)
+        assert "error" in data
+
+    @patch("strava_mcp.tools.activities.load_config")
+    @patch("strava_mcp.tools.activities.validate_credentials")
+    async def test_query_activities_reduced_limit_with_enrichments(
+        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
+    ):
+        """Test that enrichments trigger lower default limit."""
+        from datetime import datetime
+
+        from httpx import Response
+
+        mock_load_config.return_value = mock_config
+        mock_validate.return_value = True
+
+        # Create 6 activities (more than enrichment limit of 5)
+        now = datetime.now(UTC)
+        activities = [
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 3000 + i,
+                "name": f"Activity {i}",
+                "start_date_local": now.isoformat(),
+            }
+            for i in range(6)
+        ]
+
+        def activities_response(request):
+            return Response(200, json=activities)
+
+        respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
+
+        # Request with enrichments (should default to limit=5)
+        # Note: We don't test actual enrichment fetching here, just the limit behavior
+        result = await query_activities(time_range="90d", include_laps=True)
+        data = json.loads(result)
+
+        # Should use default limit of 5 for enrichments
+        assert data["pagination"]["limit"] == 5
+        assert len(data["data"]["activities"]) == 5

@@ -26,23 +26,33 @@ async def query_segments(
     ] = None,
     min_category: Annotated[int | None, "Minimum climb category 0-5 (for explore)"] = None,
     max_category: Annotated[int | None, "Maximum climb category 0-5 (for explore)"] = None,
-    limit: Annotated[int, "Maximum number of segments to return"] = 30,
+    cursor: Annotated[str | None, "Pagination cursor from previous response"] = None,
+    limit: Annotated[int, "Max segments per page (1-50, default 10)"] = 10,
+    efforts_limit: Annotated[
+        int, "Max efforts to return when include_efforts=True (1-50, default 10)"
+    ] = 10,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
 ) -> str:
-    """Query Strava segments with flexible options.
+    """Query Strava segments with pagination support.
 
     This unified tool can:
     - Get a single segment by ID with optional efforts history
-    - List starred segments
-    - Explore segments in a geographic area
+    - List starred segments with pagination
+    - Explore segments in a geographic area with pagination
 
     Returns: JSON string with structure:
     {
         "data": {
             "segment": {...}        // Single segment mode
             OR
-            "segments": [...],      // List mode
+            "segments": [...],      // List mode (max 50 items)
             "count": N
+        },
+        "pagination": {             // List mode only
+            "cursor": "...",
+            "has_more": true,
+            "limit": 10,
+            "returned": 10
         },
         "metadata": {
             "fetched_at": "ISO timestamp",
@@ -55,6 +65,7 @@ async def query_segments(
         - Get with efforts: query_segments(segment_id=12345, include_efforts=True)
         - List starred: query_segments(starred_only=True)
         - Explore area: query_segments(bounds="37.77,-122.45,37.80,-122.40")
+        - Paginate results: query_segments(starred_only=True, cursor="eyJwYWdl...")
     """
     config = load_config()
 
@@ -65,24 +76,38 @@ async def query_segments(
             suggestions=["Run 'strava-mcp-auth' to set up authentication"],
         )
 
+    # Validate limits
+    if limit < 1 or limit > 50:
+        return ResponseBuilder.build_error_response(
+            f"Invalid limit: {limit}. Must be between 1 and 50.",
+            error_type="validation_error",
+        )
+    if efforts_limit < 1 or efforts_limit > 50:
+        return ResponseBuilder.build_error_response(
+            f"Invalid efforts_limit: {efforts_limit}. Must be between 1 and 50.",
+            error_type="validation_error",
+        )
+
     try:
         async with StravaClient(config) as client:
             # Single segment mode
             if segment_id is not None:
-                return await _get_single_segment(client, segment_id, include_efforts, unit, limit)
+                return await _get_single_segment(
+                    client, segment_id, include_efforts, unit, efforts_limit
+                )
 
             # Starred segments mode
             if starred_only:
-                return await _list_starred_segments(client, limit, unit)
+                return await _list_starred_segments(client, limit, cursor, unit)
 
             # Explore segments mode
             if bounds:
                 return await _explore_segments(
-                    client, bounds, activity_type, min_category, max_category, limit, unit
+                    client, bounds, activity_type, min_category, max_category, limit, cursor, unit
                 )
 
             # Default: list starred segments
-            return await _list_starred_segments(client, limit, unit)
+            return await _list_starred_segments(client, limit, cursor, unit)
 
     except ValueError as e:
         return ResponseBuilder.build_error_response(
@@ -205,13 +230,31 @@ async def _get_single_segment(
 
 
 async def _list_starred_segments(
-    client: StravaClient, limit: int, unit: MeasurementPreference
+    client: StravaClient, limit: int, cursor: str | None, unit: MeasurementPreference
 ) -> str:
-    """List starred segments."""
-    segments = await client.list_starred_segments(page=1, per_page=limit)
+    """List starred segments with pagination."""
+    from ..pagination import build_pagination_info, decode_cursor
+
+    # Parse cursor
+    current_page = 1
+    if cursor:
+        try:
+            cursor_data = decode_cursor(cursor)
+            current_page = cursor_data.get("page", 1)
+        except ValueError:
+            return ResponseBuilder.build_error_response(
+                "Invalid pagination cursor",
+                error_type="validation_error",
+            )
+
+    # Fetch limit+1 to detect if there are more pages
+    segments = await client.list_starred_segments(page=current_page, per_page=limit + 1)
+
+    has_more = len(segments) > limit
+    segments = segments[:limit]
 
     formatted_segments: list[dict[str, Any]] = []
-    for segment in segments[:limit]:
+    for segment in segments:
         formatted_segments.append(
             {
                 "id": segment.id,
@@ -241,10 +284,16 @@ async def _list_starred_segments(
 
     metadata = {
         "query_type": "starred_segments",
-        "count": len(formatted_segments),
     }
 
-    return ResponseBuilder.build_response(data, metadata=metadata)
+    pagination = build_pagination_info(
+        returned_count=len(formatted_segments),
+        limit=limit,
+        current_page=current_page,
+        has_more=has_more,
+    )
+
+    return ResponseBuilder.build_response(data, metadata=metadata, pagination=pagination)
 
 
 async def _explore_segments(
@@ -254,9 +303,14 @@ async def _explore_segments(
     min_category: int | None,
     max_category: int | None,
     limit: int,
+    cursor: str | None,
     unit: MeasurementPreference,
 ) -> str:
-    """Explore segments in a geographic area."""
+    """Explore segments in a geographic area with pagination."""
+    from ..pagination import build_pagination_info
+
+    # Note: Strava's explore API doesn't support pagination natively,
+    # but we paginate the results client-side
     # Parse bounds
     try:
         coords = [float(x.strip()) for x in bounds.split(",")]
@@ -276,10 +330,32 @@ async def _explore_segments(
     )
 
     # Extract segments list from response
-    segments = response.get("segments", [])
+    all_segments = response.get("segments", [])
+
+    # Determine offset from cursor
+    offset = 0
+    if cursor:
+        try:
+            from ..pagination import decode_cursor
+
+            cursor_data = decode_cursor(cursor)
+            # For explore, we use page to calculate offset
+            page = cursor_data.get("page", 1)
+            offset = (page - 1) * limit
+        except ValueError:
+            return ResponseBuilder.build_error_response(
+                "Invalid pagination cursor",
+                error_type="validation_error",
+            )
+
+    # Slice segments for current page
+    start_idx = offset
+    end_idx = offset + limit
+    segments = all_segments[start_idx:end_idx]
+    has_more = end_idx < len(all_segments)
 
     formatted_segments: list[dict[str, Any]] = []
-    for segment in segments[:limit]:
+    for segment in segments:
         formatted_segments.append(
             {
                 "id": segment["id"],
@@ -311,10 +387,9 @@ async def _explore_segments(
         "count": len(formatted_segments),
     }
 
-    metadata = {
+    metadata: dict[str, Any] = {
         "query_type": "explore_segments",
         "bounds": bounds,
-        "count": len(formatted_segments),
     }
 
     if activity_type:
@@ -324,7 +399,23 @@ async def _explore_segments(
     if max_category is not None:
         metadata["max_category"] = max_category
 
-    return ResponseBuilder.build_response(data, metadata=metadata)
+    # Build pagination filters for cursor
+    pagination_filters: dict[str, Any] = {
+        "bounds": bounds,
+    }
+    if activity_type:
+        pagination_filters["activity_type"] = activity_type
+
+    current_page = (offset // limit) + 1 if limit > 0 else 1
+    pagination = build_pagination_info(
+        returned_count=len(formatted_segments),
+        limit=limit,
+        current_page=current_page,
+        has_more=has_more,
+        filters=pagination_filters,
+    )
+
+    return ResponseBuilder.build_response(data, metadata=metadata, pagination=pagination)
 
 
 async def star_segment(
@@ -406,19 +497,15 @@ async def get_segment_leaderboard(
         Literal["this_year", "this_month", "this_week", "today"] | None,
         "Filter by date range",
     ] = None,
-    page: Annotated[int, "Page number (1-indexed)"] = 1,
-    per_page: Annotated[int, "Entries per page (max 200)"] = 50,
+    cursor: Annotated[str | None, "Pagination cursor from previous response"] = None,
+    limit: Annotated[int, "Max entries per page (1-200, default 50)"] = 50,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
 ) -> str:
-    """Get leaderboard for a segment with filtering options.
+    """Get leaderboard for a segment with pagination support.
 
     Returns: JSON string with structure:
     {
         "data": {
-            "segment": {
-                "id": N,
-                "name": "..."
-            },
             "entries": [
                 {
                     "rank": N,
@@ -429,6 +516,12 @@ async def get_segment_leaderboard(
             ],
             "entry_count": N
         },
+        "pagination": {
+            "cursor": "...",
+            "has_more": true,
+            "limit": 50,
+            "returned": 50
+        },
         "metadata": {
             "fetched_at": "ISO timestamp",
             "segment_id": N,
@@ -436,6 +529,8 @@ async def get_segment_leaderboard(
         }
     }
     """
+    from ..pagination import build_pagination_info, decode_cursor
+
     config = load_config()
 
     if not validate_credentials(config):
@@ -445,8 +540,28 @@ async def get_segment_leaderboard(
             suggestions=["Run 'strava-mcp-auth' to set up authentication"],
         )
 
+    # Validate limit
+    if limit < 1 or limit > 200:
+        return ResponseBuilder.build_error_response(
+            f"Invalid limit: {limit}. Must be between 1 and 200.",
+            error_type="validation_error",
+        )
+
+    # Parse cursor
+    current_page = 1
+    if cursor:
+        try:
+            cursor_data = decode_cursor(cursor)
+            current_page = cursor_data.get("page", 1)
+        except ValueError:
+            return ResponseBuilder.build_error_response(
+                "Invalid pagination cursor",
+                error_type="validation_error",
+            )
+
     try:
         async with StravaClient(config) as client:
+            # Fetch limit+1 to detect if there are more pages
             leaderboard = await client.get_segment_leaderboard(
                 segment_id=segment_id,
                 gender=gender,
@@ -455,12 +570,16 @@ async def get_segment_leaderboard(
                 following=following,
                 club_id=club_id,
                 date_range=date_range,
-                page=page,
-                per_page=per_page,
+                page=current_page,
+                per_page=limit + 1,
             )
 
+            # Check if there are more results
+            has_more = len(leaderboard.entries) > limit
+            entries_to_return = leaderboard.entries[:limit]
+
             entries: list[dict[str, Any]] = []
-            for entry in leaderboard.entries:
+            for entry in entries_to_return:
                 entries.append(
                     {
                         "rank": entry.rank,
@@ -503,11 +622,17 @@ async def get_segment_leaderboard(
             metadata: dict[str, Any] = {
                 "segment_id": segment_id,
                 "filters": filters,
-                "page": page,
-                "per_page": per_page,
             }
 
-            return ResponseBuilder.build_response(data, metadata=metadata)
+            pagination = build_pagination_info(
+                returned_count=len(entries),
+                limit=limit,
+                current_page=current_page,
+                has_more=has_more,
+                filters=filters,
+            )
+
+            return ResponseBuilder.build_response(data, metadata=metadata, pagination=pagination)
 
     except StravaAPIError as e:
         error_type = "api_error"
