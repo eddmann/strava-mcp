@@ -3,7 +3,6 @@
 A Model Context Protocol (MCP) server for Strava integration. Access your activities, athlete stats, segments, and routes through Claude and other LLMs.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![MCP](https://img.shields.io/badge/MCP-1.3.1-green.svg)](https://modelcontextprotocol.io)
 
 ## Overview
 
