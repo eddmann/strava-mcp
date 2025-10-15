@@ -181,7 +181,7 @@ async def analyze_training(
 
             weekly_trends: list[dict[str, Any]] = [
                 {
-                    "week_start": week,
+                    "week_start": ResponseBuilder.format_date_with_day(week),
                     "activities": data["count"],
                     "distance": {
                         "meters": data["distance"],
