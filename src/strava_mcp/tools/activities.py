@@ -34,7 +34,7 @@ async def query_activities(
         str | None, "Pagination cursor from previous response (for continuing multi-page queries)"
     ] = None,
     limit: Annotated[
-        int | None,
+        str | int | None,
         "Maximum activities per page (1-50). Default: 10 for basic queries, 5 with enrichments. "
         "Use pagination cursor for large datasets.",
     ] = None,
@@ -86,6 +86,16 @@ async def query_activities(
     """
     assert ctx is not None
     config: StravaConfig = ctx.get_state("config")
+
+    # Coerce limit to int if passed as string
+    if limit is not None and isinstance(limit, str):
+        try:
+            limit = int(limit)
+        except ValueError:
+            return ResponseBuilder.build_error_response(
+                f"Invalid limit value: '{limit}'. Must be a number between 1 and 50.",
+                error_type="validation_error",
+            )
 
     # Determine default limit based on enrichments
     if limit is None:
