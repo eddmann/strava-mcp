@@ -5,7 +5,9 @@ This module provides segment query tools with structured JSON output.
 
 from typing import Annotated, Any, Literal
 
-from ..auth import load_config, validate_credentials
+from fastmcp import Context
+
+from ..auth import StravaConfig
 from ..client import StravaAPIError, StravaClient
 from ..models import MeasurementPreference
 from ..response_builder import ResponseBuilder
@@ -32,6 +34,7 @@ async def query_segments(
         int, "Max efforts to return when include_efforts=True (1-50, default 10)"
     ] = 10,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
+    ctx: Context | None = None,
 ) -> str:
     """Query Strava segments with pagination support.
 
@@ -67,14 +70,8 @@ async def query_segments(
         - Explore area: query_segments(bounds="37.77,-122.45,37.80,-122.40")
         - Paginate results: query_segments(starred_only=True, cursor="eyJwYWdl...")
     """
-    config = load_config()
-
-    if not validate_credentials(config):
-        return ResponseBuilder.build_error_response(
-            "Strava credentials not configured",
-            error_type="authentication_required",
-            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
-        )
+    assert ctx is not None
+    config: StravaConfig = ctx.get_state("config")
 
     # Validate limits
     if limit < 1 or limit > 50:
@@ -421,6 +418,7 @@ async def _explore_segments(
 async def star_segment(
     segment_id: Annotated[int, "Segment ID"],
     starred: Annotated[bool, "True to star, False to unstar"] = True,
+    ctx: Context | None = None,
 ) -> str:
     """Star or unstar a segment.
 
@@ -436,14 +434,8 @@ async def star_segment(
         }
     }
     """
-    config = load_config()
-
-    if not validate_credentials(config):
-        return ResponseBuilder.build_error_response(
-            "Strava credentials not configured",
-            error_type="authentication_required",
-            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
-        )
+    assert ctx is not None
+    config: StravaConfig = ctx.get_state("config")
 
     try:
         async with StravaClient(config) as client:
@@ -500,6 +492,7 @@ async def get_segment_leaderboard(
     cursor: Annotated[str | None, "Pagination cursor from previous response"] = None,
     limit: Annotated[int, "Max entries per page (1-200, default 50)"] = 50,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
+    ctx: Context | None = None,
 ) -> str:
     """Get leaderboard for a segment with pagination support.
 
@@ -531,14 +524,8 @@ async def get_segment_leaderboard(
     """
     from ..pagination import build_pagination_info, decode_cursor
 
-    config = load_config()
-
-    if not validate_credentials(config):
-        return ResponseBuilder.build_error_response(
-            "Strava credentials not configured",
-            error_type="authentication_required",
-            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
-        )
+    assert ctx is not None
+    config: StravaConfig = ctx.get_state("config")
 
     # Validate limit
     if limit < 1 or limit > 200:

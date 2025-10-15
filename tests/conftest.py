@@ -1,5 +1,8 @@
 """Pytest configuration and shared fixtures."""
 
+import os
+from unittest.mock import patch
+
 import pytest
 import respx
 from httpx import Response
@@ -27,6 +30,22 @@ def respx_mock():
         base_url="https://www.strava.com/api/v3", assert_all_called=False
     ) as respx_mock:
         yield respx_mock
+
+
+@pytest.fixture(autouse=True)
+def mock_env_config(mock_config):
+    """Mock environment variables so config loads test credentials automatically."""
+    env_vars = {
+        "STRAVA_CLIENT_ID": mock_config.strava_client_id,
+        "STRAVA_CLIENT_SECRET": mock_config.strava_client_secret,
+        "STRAVA_ACCESS_TOKEN": mock_config.strava_access_token,
+        "STRAVA_REFRESH_TOKEN": mock_config.strava_refresh_token,
+        "STRAVA_MEASUREMENT_PREFERENCE": mock_config.strava_measurement_preference,
+        "ROUTE_EXPORT_PATH": mock_config.route_export_path,
+    }
+
+    with patch.dict(os.environ, env_vars, clear=False):
+        yield
 
 
 @pytest.fixture

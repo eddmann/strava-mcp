@@ -5,7 +5,9 @@ This module provides activity query tools with structured JSON output.
 
 from typing import Annotated, Any
 
-from ..auth import load_config, validate_credentials
+from fastmcp import Context
+
+from ..auth import StravaConfig
 from ..client import StravaAPIError, StravaClient
 from ..models import MeasurementPreference
 from ..response_builder import ResponseBuilder
@@ -37,6 +39,7 @@ async def query_activities(
         "Use pagination cursor for large datasets.",
     ] = None,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
+    ctx: Context | None = None,
 ) -> str:
     """Query Strava activities with pagination support.
 
@@ -81,14 +84,8 @@ async def query_activities(
         - Get runs from last month: query_activities(time_range="30d", activity_type="Run")
         - Paginate large results: query_activities(time_range="ytd", cursor="eyJwYWdl...")
     """
-    config = load_config()
-
-    if not validate_credentials(config):
-        return ResponseBuilder.build_error_response(
-            "Strava credentials not configured",
-            error_type="authentication_required",
-            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
-        )
+    assert ctx is not None
+    config: StravaConfig = ctx.get_state("config")
 
     # Determine default limit based on enrichments
     if limit is None:
@@ -319,6 +316,7 @@ async def get_activity_social(
     include_comments: Annotated[bool, "Include comments"] = True,
     include_kudos: Annotated[bool, "Include kudos"] = True,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
+    ctx: Context | None = None,
 ) -> str:
     """Get social data (comments and kudos) for an activity.
 
@@ -338,14 +336,8 @@ async def get_activity_social(
         }
     }
     """
-    config = load_config()
-
-    if not validate_credentials(config):
-        return ResponseBuilder.build_error_response(
-            "Strava credentials not configured",
-            error_type="authentication_required",
-            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
-        )
+    assert ctx is not None
+    config: StravaConfig = ctx.get_state("config")
 
     try:
         async with StravaClient(config) as client:
