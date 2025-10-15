@@ -92,7 +92,7 @@ class ResponseBuilder:
 
         response["metadata"] = converted_meta
 
-        return json.dumps(response)
+        return json.dumps(response, separators=(',', ':'))
 
     @staticmethod
     def build_error_response(
@@ -121,7 +121,7 @@ class ResponseBuilder:
         if suggestions:
             response["error"]["suggestions"] = suggestions
 
-        return json.dumps(response)
+        return json.dumps(response, separators=(',', ':'))
 
     @staticmethod
     def format_activity(
