@@ -9,19 +9,19 @@ from fastmcp import Context
 
 from ..auth import StravaConfig
 from ..client import StravaAPIError, StravaClient
-from ..models import MeasurementPreference
+from ..models import ActivityType, MeasurementPreference
 from ..response_builder import ResponseBuilder
-from ..time_utils import get_range_description, parse_time_range
+from ..time_utils import TimeRangePreset, get_range_description, parse_time_range
 
 
 async def query_activities(
     time_range: Annotated[
-        str,
-        "Time range for activities. Options: 'recent', '7d', '30d', '90d', 'ytd', "
-        "'this-week', 'this-month', or 'YYYY-MM-DD:YYYY-MM-DD'",
+        TimeRangePreset | str,
+        "Time range for activities. Preset: 'recent', '7d', '30d', '90d', 'ytd', "
+        "'this-week', 'this-month', or custom range 'YYYY-MM-DD:YYYY-MM-DD'",
     ] = "recent",
     activity_type: Annotated[
-        str | None, "Filter by activity type (e.g., 'Run', 'Ride', 'Swim')"
+        ActivityType | None, "Filter by activity type (e.g., 'Run', 'Ride', 'Swim')"
     ] = None,
     activity_id: Annotated[int | None, "Get specific activity by ID"] = None,
     include_streams: Annotated[
