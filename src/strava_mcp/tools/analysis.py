@@ -481,7 +481,7 @@ async def find_similar_activities(
         str,
         "Similarity criteria (comma-separated: 'type', 'distance', 'elevation', 'duration')",
     ] = "type,distance",
-    limit: Annotated[int, "Max similar activities to return (1-20, default 10)"] = 10,
+    limit: Annotated[str | int, "Max similar activities to return (1-20, default 10)"] = 10,
     search_days: Annotated[int, "Days to search back (1-365, default 90)"] = 90,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
     ctx: Context | None = None,
@@ -510,6 +510,16 @@ async def find_similar_activities(
     """
     assert ctx is not None
     config: StravaConfig = ctx.get_state("config")
+
+    # Coerce limit to int if passed as string
+    if isinstance(limit, str):
+        try:
+            limit = int(limit)
+        except ValueError:
+            return ResponseBuilder.build_error_response(
+                f"Invalid limit value: '{limit}'. Must be a number between 1 and 20.",
+                error_type="validation_error",
+            )
 
     # Validate inputs
     if limit < 1 or limit > 20:

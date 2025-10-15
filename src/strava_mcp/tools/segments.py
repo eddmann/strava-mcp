@@ -29,9 +29,9 @@ async def query_segments(
     min_category: Annotated[int | None, "Minimum climb category 0-5 (for explore)"] = None,
     max_category: Annotated[int | None, "Maximum climb category 0-5 (for explore)"] = None,
     cursor: Annotated[str | None, "Pagination cursor from previous response"] = None,
-    limit: Annotated[int, "Max segments per page (1-50, default 10)"] = 10,
+    limit: Annotated[str | int, "Max segments per page (1-50, default 10)"] = 10,
     efforts_limit: Annotated[
-        int, "Max efforts to return when include_efforts=True (1-50, default 10)"
+        str | int, "Max efforts to return when include_efforts=True (1-50, default 10)"
     ] = 10,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
     ctx: Context | None = None,
@@ -72,6 +72,24 @@ async def query_segments(
     """
     assert ctx is not None
     config: StravaConfig = ctx.get_state("config")
+
+    # Coerce limits to int if passed as string
+    if isinstance(limit, str):
+        try:
+            limit = int(limit)
+        except ValueError:
+            return ResponseBuilder.build_error_response(
+                f"Invalid limit value: '{limit}'. Must be a number between 1 and 50.",
+                error_type="validation_error",
+            )
+    if isinstance(efforts_limit, str):
+        try:
+            efforts_limit = int(efforts_limit)
+        except ValueError:
+            return ResponseBuilder.build_error_response(
+                f"Invalid efforts_limit value: '{efforts_limit}'. Must be a number between 1 and 50.",
+                error_type="validation_error",
+            )
 
     # Validate limits
     if limit < 1 or limit > 50:
@@ -490,7 +508,7 @@ async def get_segment_leaderboard(
         "Filter by date range",
     ] = None,
     cursor: Annotated[str | None, "Pagination cursor from previous response"] = None,
-    limit: Annotated[int, "Max entries per page (1-200, default 50)"] = 50,
+    limit: Annotated[str | int, "Max entries per page (1-200, default 50)"] = 50,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
     ctx: Context | None = None,
 ) -> str:
@@ -526,6 +544,16 @@ async def get_segment_leaderboard(
 
     assert ctx is not None
     config: StravaConfig = ctx.get_state("config")
+
+    # Coerce limit to int if passed as string
+    if isinstance(limit, str):
+        try:
+            limit = int(limit)
+        except ValueError:
+            return ResponseBuilder.build_error_response(
+                f"Invalid limit value: '{limit}'. Must be a number between 1 and 200.",
+                error_type="validation_error",
+            )
 
     # Validate limit
     if limit < 1 or limit > 200:

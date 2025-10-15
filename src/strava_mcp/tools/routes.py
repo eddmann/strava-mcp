@@ -16,7 +16,7 @@ from ..response_builder import ResponseBuilder
 async def query_routes(
     route_id: Annotated[int | None, "Get specific route by ID"] = None,
     cursor: Annotated[str | None, "Pagination cursor from previous response"] = None,
-    limit: Annotated[int, "Max routes per page (1-50, default 10)"] = 10,
+    limit: Annotated[str | int, "Max routes per page (1-50, default 10)"] = 10,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
     ctx: Context | None = None,
 ) -> str:
@@ -53,6 +53,16 @@ async def query_routes(
     """
     assert ctx is not None
     config: StravaConfig = ctx.get_state("config")
+
+    # Coerce limit to int if passed as string
+    if isinstance(limit, str):
+        try:
+            limit = int(limit)
+        except ValueError:
+            return ResponseBuilder.build_error_response(
+                f"Invalid limit value: '{limit}'. Must be a number between 1 and 50.",
+                error_type="validation_error",
+            )
 
     # Validate limit
     if limit < 1 or limit > 50:

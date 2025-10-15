@@ -184,6 +184,46 @@ class TestQueryActivities:
         assert "error" in data
         assert "validation_error" in data["error"]["type"]
 
+    async def test_query_activities_string_limit_coercion(self, stub_api, respx_mock):
+        """Test that limit parameter accepts strings and coerces them to integers."""
+        from httpx import Response
+
+        activities = [SUMMARY_ACTIVITY]
+
+        def activities_response(request):
+            page = request.url.params.get("page", "1")
+            if page == "1":
+                return Response(200, json=activities)
+            return Response(200, json=[])
+
+        respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
+
+        async with Client(mcp) as client:
+            # Test with string limit
+            result = await client.call_tool(
+                "query_activities", {"time_range": "recent", "limit": "1"}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
+
+        assert "data" in data
+        assert "pagination" in data
+        assert data["pagination"]["limit"] == 1
+        assert data["pagination"]["returned"] == 1
+
+    async def test_query_activities_invalid_string_limit(self):
+        """Test querying activities with non-numeric string limit."""
+        async with Client(mcp) as client:
+            result = await client.call_tool("query_activities", {"limit": "abc"})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
+
+        assert "error" in data
+        assert "validation_error" in data["error"]["type"]
+        assert "abc" in data["error"]["message"]
+
 
 class TestGetActivitySocial:
     """Test get_activity_social tool."""
