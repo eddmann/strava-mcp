@@ -40,6 +40,34 @@ class ResponseBuilder:
     """Builder for standardized JSON responses."""
 
     @staticmethod
+    def format_date_with_day(dt: datetime | str | None) -> dict[str, str] | None:
+        """Format a date/datetime with explicit day-of-week information.
+
+        Args:
+            dt: datetime object or ISO string or None
+
+        Returns:
+            Dict with datetime, date, day_of_week, and formatted string, or None if input is None
+        """
+        if dt is None:
+            return None
+
+        # Parse the datetime if it's a string, otherwise use it directly
+        if isinstance(dt, str):
+            parsed_dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+        else:
+            parsed_dt = dt
+
+        return {
+            "datetime": dt if isinstance(dt, str) else dt.isoformat(),
+            "date": parsed_dt.strftime("%Y-%m-%d"),
+            "day_of_week": parsed_dt.strftime("%A"),  # e.g., "Monday"
+            "formatted": parsed_dt.strftime(
+                "%A, %B %d, %Y at %I:%M %p"
+            ),  # e.g., "Monday, October 15, 2025 at 02:30 PM"
+        }
+
+    @staticmethod
     def build_response(
         data: dict[str, Any],
         analysis: dict[str, Any] | None = None,
@@ -141,8 +169,11 @@ class ResponseBuilder:
             "name": activity.get("name"),
             "type": activity.get("type"),
             "sport_type": activity.get("sport_type"),
-            "start_date": activity.get("start_date_local"),
         }
+
+        # Start date with day of week
+        if start_date := activity.get("start_date_local"):
+            formatted["start_date"] = ResponseBuilder.format_date_with_day(start_date)
 
         # Distance
         if distance_m := activity.get("distance"):

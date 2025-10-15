@@ -210,7 +210,9 @@ async def _get_single_segment(
             }
             if stats.pr_elapsed_time
             else None,
-            "pr_date": stats.pr_date,
+            "pr_date": ResponseBuilder.format_date_with_day(stats.pr_date)
+            if stats.pr_date
+            else None,
             "effort_count": stats.effort_count,
         }
 
@@ -227,7 +229,9 @@ async def _get_single_segment(
                     "seconds": effort.elapsed_time,
                     "formatted": f"{effort.elapsed_time // 60}:{effort.elapsed_time % 60:02d}",
                 },
-                "start_date": effort.start_date_local,
+                "start_date": ResponseBuilder.format_date_with_day(effort.start_date_local)
+                if effort.start_date_local
+                else None,
                 "activity_id": effort.activity.id if effort.activity else None,
             }
             for effort in efforts[:limit]
@@ -609,7 +613,7 @@ async def get_segment_leaderboard(
                         }
                         if entry.moving_time
                         else None,
-                        "start_date": entry.start_date_local.isoformat()
+                        "start_date": ResponseBuilder.format_date_with_day(entry.start_date_local)
                         if entry.start_date_local
                         else None,
                     }
