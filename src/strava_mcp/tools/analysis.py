@@ -8,7 +8,9 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Annotated, Any
 
-from ..auth import load_config, validate_credentials
+from fastmcp import Context
+
+from ..auth import StravaConfig
 from ..client import StravaAPIError, StravaClient
 from ..models import MeasurementPreference
 from ..response_builder import ResponseBuilder
@@ -29,6 +31,7 @@ async def analyze_training(
         "Max activities to analyze (1-500, default 200). Higher values may be slow.",
     ] = 200,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
+    ctx: Context | None = None,
 ) -> str:
     """Analyze training over a period with aggregated metrics and trends.
 
@@ -76,14 +79,8 @@ async def analyze_training(
         }
     }
     """
-    config = load_config()
-
-    if not validate_credentials(config):
-        return ResponseBuilder.build_error_response(
-            "Strava credentials not configured",
-            error_type="authentication_required",
-            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
-        )
+    assert ctx is not None
+    config: StravaConfig = ctx.get_state("config")
 
     # Validate max_activities
     if max_activities < 1 or max_activities > 500:
@@ -311,6 +308,7 @@ async def analyze_training(
 async def compare_activities(
     activity_ids: Annotated[str, "Comma-separated activity IDs to compare (2-5 activities)"],
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
+    ctx: Context | None = None,
 ) -> str:
     """Compare multiple activities side-by-side.
 
@@ -341,14 +339,8 @@ async def compare_activities(
         }
     }
     """
-    config = load_config()
-
-    if not validate_credentials(config):
-        return ResponseBuilder.build_error_response(
-            "Strava credentials not configured",
-            error_type="authentication_required",
-            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
-        )
+    assert ctx is not None
+    config: StravaConfig = ctx.get_state("config")
 
     try:
         # Parse activity IDs
@@ -492,6 +484,7 @@ async def find_similar_activities(
     limit: Annotated[int, "Max similar activities to return (1-20, default 10)"] = 10,
     search_days: Annotated[int, "Days to search back (1-365, default 90)"] = 90,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
+    ctx: Context | None = None,
 ) -> str:
     """Find activities similar to a reference activity.
 
@@ -515,14 +508,8 @@ async def find_similar_activities(
         }
     }
     """
-    config = load_config()
-
-    if not validate_credentials(config):
-        return ResponseBuilder.build_error_response(
-            "Strava credentials not configured",
-            error_type="authentication_required",
-            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
-        )
+    assert ctx is not None
+    config: StravaConfig = ctx.get_state("config")
 
     # Validate inputs
     if limit < 1 or limit > 20:

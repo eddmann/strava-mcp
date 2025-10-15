@@ -1,13 +1,18 @@
 """Strava MCP Server - Main entry point."""
 
 from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 # Load environment variables
 load_dotenv()
 
 # Initialize FastMCP server
 mcp = FastMCP("Strava")
+
+# Register middleware
+from .middleware import ConfigMiddleware
+
+mcp.add_middleware(ConfigMiddleware())
 
 # Import and register tools
 from .tools.activities import get_activity_social, query_activities
@@ -42,12 +47,55 @@ mcp.tool()(find_similar_activities)
 @mcp.resource("strava://athlete/profile")
 async def athlete_profile_resource() -> str:
     """Complete athlete profile with stats, zones, and gear for context."""
-    result = await get_athlete_profile(
-        include_stats=True,
-        include_zones=True,
-        stats_period="recent",  # Recent stats to keep context window manageable
-    )
-    return result
+    from .auth import load_config
+    from .client import StravaAPIError, StravaClient
+    from .response_builder import ResponseBuilder
+
+    # Load config directly since resources don't go through middleware
+    config = load_config()
+
+    try:
+        async with StravaClient(config) as client:
+            # Get athlete and stats
+            athlete = await client.get_athlete()
+            if athlete.id is None:
+                return ResponseBuilder.build_error_response(
+                    "Athlete ID not available",
+                    error_type="invalid_data",
+                )
+
+            stats = await client.get_athlete_stats(athlete.id)
+            zones = await client.get_athlete_zones()
+
+            # Build minimal profile data
+            data = {
+                "profile": {
+                    "id": athlete.id,
+                    "name": f"{athlete.firstname} {athlete.lastname}",
+                    "location": {
+                        "city": athlete.city,
+                        "state": athlete.state,
+                        "country": athlete.country,
+                    },
+                },
+                "zones": ResponseBuilder.format_zones(zones.model_dump()),
+                "statistics": {
+                    "recent": {
+                        "run": {
+                            "count": stats.recent_run_totals.count,
+                            "distance_km": round(stats.recent_run_totals.distance / 1000, 1),
+                        },
+                        "ride": {
+                            "count": stats.recent_ride_totals.count,
+                            "distance_km": round(stats.recent_ride_totals.distance / 1000, 1),
+                        },
+                    }
+                },
+            }
+
+            return ResponseBuilder.build_response(data, metadata={"type": "athlete_profile"})
+    except StravaAPIError as e:
+        return ResponseBuilder.build_error_response(e.message, error_type="api_error")
 
 
 # MCP Prompts - Templates for common queries

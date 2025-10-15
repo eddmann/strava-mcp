@@ -1,16 +1,13 @@
 """Tests for analysis tools."""
 
 import json
-from unittest.mock import patch
 
 import pytest
+from fastmcp import Client
 
-from strava_mcp.tools.analysis import (
-    analyze_training,
-    compare_activities,
-    find_similar_activities,
-)
+from strava_mcp.server import mcp
 from tests.fixtures.activity_fixtures import DETAILED_ACTIVITY, SUMMARY_ACTIVITY
+from tests.helpers import get_text_content
 from tests.stubs.strava_api_stub import StravaAPIStubber
 
 
@@ -23,16 +20,9 @@ def stub_api(respx_mock):
 class TestAnalyzeTraining:
     """Test analyze_training tool."""
 
-    @patch("strava_mcp.tools.analysis.load_config")
-    @patch("strava_mcp.tools.analysis.validate_credentials")
-    async def test_analyze_training_success(
-        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
-    ):
+    async def test_analyze_training_success(self, stub_api, respx_mock):
         """Test successful training analysis."""
         from httpx import Response
-
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
 
         # Create multiple activities for analysis
         activities = [SUMMARY_ACTIVITY for _ in range(5)]
@@ -46,8 +36,11 @@ class TestAnalyzeTraining:
 
         respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
 
-        result = await analyze_training(period="30d")
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("analyze_training", {"period": "30d"})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         # Check structure
         assert "data" in data
@@ -88,35 +81,24 @@ class TestAnalyzeTraining:
         assert "metadata" in data
         assert "period" in data["metadata"]
 
-    @patch("strava_mcp.tools.analysis.load_config")
-    @patch("strava_mcp.tools.analysis.validate_credentials")
-    async def test_analyze_training_empty(
-        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
-    ):
+    async def test_analyze_training_empty(self, stub_api, respx_mock):
         """Test training analysis with no activities."""
         from httpx import Response
 
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         respx_mock.get("/athlete/activities").mock(return_value=Response(200, json=[]))
 
-        result = await analyze_training(period="7d")
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("analyze_training", {"period": "7d"})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert data["data"]["summary"]["total_activities"] == 0
         assert "message" in data["data"]
 
-    @patch("strava_mcp.tools.analysis.load_config")
-    @patch("strava_mcp.tools.analysis.validate_credentials")
-    async def test_analyze_training_with_type_filter(
-        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
-    ):
+    async def test_analyze_training_with_type_filter(self, stub_api, respx_mock):
         """Test training analysis filtered by activity type."""
         from httpx import Response
-
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
 
         activities = [SUMMARY_ACTIVITY for _ in range(3)]
 
@@ -129,8 +111,13 @@ class TestAnalyzeTraining:
 
         respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
 
-        result = await analyze_training(period="30d", activity_type="Run")
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "analyze_training", {"period": "30d", "activity_type": "Run"}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "metadata" in data
         assert data["metadata"].get("activity_type") == "Run"
@@ -139,15 +126,8 @@ class TestAnalyzeTraining:
 class TestCompareActivities:
     """Test compare_activities tool."""
 
-    @patch("strava_mcp.tools.analysis.load_config")
-    @patch("strava_mcp.tools.analysis.validate_credentials")
-    async def test_compare_activities_success(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_compare_activities_success(self, stub_api):
         """Test successful activity comparison."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         # Stub two activities
         activity1 = {**DETAILED_ACTIVITY, "id": 1}
         activity2 = {**DETAILED_ACTIVITY, "id": 2, "distance": 30000}
@@ -155,8 +135,11 @@ class TestCompareActivities:
         stub_api.stub_activity_details_endpoint(1, activity1)
         stub_api.stub_activity_details_endpoint(2, activity2)
 
-        result = await compare_activities("1,2")
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("compare_activities", {"activity_ids": "1,2"})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         # Check structure
         assert "data" in data
@@ -182,29 +165,25 @@ class TestCompareActivities:
         assert "analysis" in data
         assert "insights" in data["analysis"]
 
-    @patch("strava_mcp.tools.analysis.load_config")
-    @patch("strava_mcp.tools.analysis.validate_credentials")
-    async def test_compare_activities_too_few(self, mock_validate, mock_load_config, mock_config):
+    async def test_compare_activities_too_few(self):
         """Test comparison with too few activities."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
+        async with Client(mcp) as client:
+            result = await client.call_tool("compare_activities", {"activity_ids": "1"})
 
-        result = await compare_activities("1")
-        data = json.loads(result)
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "error" in data
         assert "validation_error" in data["error"]["type"]
         assert "at least 2" in data["error"]["message"]
 
-    @patch("strava_mcp.tools.analysis.load_config")
-    @patch("strava_mcp.tools.analysis.validate_credentials")
-    async def test_compare_activities_too_many(self, mock_validate, mock_load_config, mock_config):
+    async def test_compare_activities_too_many(self):
         """Test comparison with too many activities."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
+        async with Client(mcp) as client:
+            result = await client.call_tool("compare_activities", {"activity_ids": "1,2,3,4,5,6"})
 
-        result = await compare_activities("1,2,3,4,5,6")
-        data = json.loads(result)
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "error" in data
         assert "validation_error" in data["error"]["type"]
@@ -214,16 +193,9 @@ class TestCompareActivities:
 class TestFindSimilarActivities:
     """Test find_similar_activities tool."""
 
-    @patch("strava_mcp.tools.analysis.load_config")
-    @patch("strava_mcp.tools.analysis.validate_credentials")
-    async def test_find_similar_activities_success(
-        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
-    ):
+    async def test_find_similar_activities_success(self, stub_api, respx_mock):
         """Test finding similar activities."""
         from httpx import Response
-
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
 
         # Reference activity
         reference = {**DETAILED_ACTIVITY, "id": 1}
@@ -243,8 +215,13 @@ class TestFindSimilarActivities:
 
         respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
 
-        result = await find_similar_activities(1, criteria="type,distance")
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "find_similar_activities", {"activity_id": 1, "criteria": "type,distance"}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         # Check structure
         assert "data" in data
@@ -256,12 +233,11 @@ class TestFindSimilarActivities:
         assert data["data"]["reference_activity"]["id"] == 1
 
         # Check similar activities structure
-        if len(data["data"]["similar_activities"]) > 0:
-            similar = data["data"]["similar_activities"][0]
-            assert "activity" in similar
-            assert "similarity_score" in similar
-            assert "differences" in similar
-            assert 0 <= similar["similarity_score"] <= 1
+        similar = data["data"]["similar_activities"][0]
+        assert "activity" in similar
+        assert "similarity_score" in similar
+        assert "differences" in similar
+        assert 0 <= similar["similarity_score"] <= 1
 
         # Check metadata
         assert "metadata" in data
@@ -269,35 +245,31 @@ class TestFindSimilarActivities:
         assert "type" in data["metadata"]["criteria"]
         assert "distance" in data["metadata"]["criteria"]
 
-    @patch("strava_mcp.tools.analysis.load_config")
-    @patch("strava_mcp.tools.analysis.validate_credentials")
-    async def test_find_similar_activities_invalid_criteria(
-        self, mock_validate, mock_load_config, mock_config
-    ):
+    async def test_find_similar_activities_invalid_criteria(self):
         """Test with invalid similarity criteria."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "find_similar_activities", {"activity_id": 1, "criteria": "invalid,type"}
+            )
 
-        result = await find_similar_activities(1, criteria="invalid,type")
-        data = json.loads(result)
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "error" in data
         assert "validation_error" in data["error"]["type"]
         assert "Invalid criteria" in data["error"]["message"]
 
-    @patch("strava_mcp.tools.analysis.load_config")
-    @patch("strava_mcp.tools.analysis.validate_credentials")
-    async def test_find_similar_activities_not_found(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_find_similar_activities_not_found(self, stub_api):
         """Test with non-existent reference activity."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_error_response("/activities/999999", status_code=404)
 
-        result = await find_similar_activities(999999)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "find_similar_activities", {"activity_id": 999999, "criteria": "type,distance"}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "error" in data
         assert "not_found" in data["error"]["type"]

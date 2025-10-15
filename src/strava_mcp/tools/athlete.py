@@ -5,7 +5,9 @@ This module provides athlete profile tools with structured JSON output.
 
 from typing import Annotated, Any, Literal
 
-from ..auth import load_config, validate_credentials
+from fastmcp import Context
+
+from ..auth import StravaConfig
 from ..client import StravaAPIError, StravaClient
 from ..models import MeasurementPreference
 from ..response_builder import ResponseBuilder
@@ -19,6 +21,7 @@ async def get_athlete_profile(
         "Statistics period: 'recent' (last 4 weeks), 'ytd' (year to date), or 'all' (all time)",
     ] = "all",
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
+    ctx: Context | None = None,
 ) -> str:
     """Get comprehensive athlete profile with optional stats and zones.
 
@@ -62,14 +65,8 @@ async def get_athlete_profile(
         - Get profile only: get_athlete_profile(include_stats=False, include_zones=False)
         - Get recent stats: get_athlete_profile(stats_period="recent")
     """
-    config = load_config()
-
-    if not validate_credentials(config):
-        return ResponseBuilder.build_error_response(
-            "Strava credentials not configured",
-            error_type="authentication_required",
-            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
-        )
+    assert ctx is not None
+    config: StravaConfig = ctx.get_state("config")
 
     try:
         async with StravaClient(config) as client:

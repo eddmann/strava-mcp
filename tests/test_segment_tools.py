@@ -1,15 +1,11 @@
 """Comprehensive tests for segment tools."""
 
 import json
-from unittest.mock import patch
 
 import pytest
+from fastmcp import Client
 
-from strava_mcp.tools.segments import (
-    get_segment_leaderboard,
-    query_segments,
-    star_segment,
-)
+from strava_mcp.server import mcp
 from tests.fixtures.segment_fixtures import (
     DETAILED_SEGMENT,
     EXPLORE_SEGMENTS_RESPONSE,
@@ -17,6 +13,7 @@ from tests.fixtures.segment_fixtures import (
     SEGMENT_LEADERBOARD,
     SUMMARY_SEGMENT,
 )
+from tests.helpers import get_text_content
 from tests.stubs.strava_api_stub import StravaAPIStubber
 
 
@@ -29,20 +26,16 @@ def stub_api(respx_mock):
 class TestQuerySegments:
     """Test query_segments tool."""
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_single_segment(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_segments_single_segment(self, stub_api):
         """Test querying single segment by ID."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segment_id = 229781
         stub_api.stub_segment_details_endpoint(segment_id, DETAILED_SEGMENT)
 
-        result = await query_segments(segment_id=segment_id)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("query_segments", {"segment_id": segment_id})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         # Check structure
         assert "data" in data
@@ -60,21 +53,19 @@ class TestQuerySegments:
         assert data["metadata"]["query_type"] == "single_segment"
         assert data["metadata"]["segment_id"] == segment_id
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_with_efforts(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_segments_with_efforts(self, stub_api):
         """Test querying segment with efforts history."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segment_id = 229781
         stub_api.stub_segment_details_endpoint(segment_id, DETAILED_SEGMENT)
         stub_api.stub_segment_efforts_endpoint(segment_id, SEGMENT_EFFORTS_LIST)
 
-        result = await query_segments(segment_id=segment_id, include_efforts=True)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_segments", {"segment_id": segment_id, "include_efforts": True}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "segment" in data["data"]
         assert "efforts" in data["data"]
@@ -91,20 +82,16 @@ class TestQuerySegments:
         assert "includes" in data["metadata"]
         assert "efforts" in data["metadata"]["includes"]
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_starred_list(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_segments_starred_list(self, stub_api):
         """Test querying starred segments."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segments = [SUMMARY_SEGMENT, {**SUMMARY_SEGMENT, "id": 2, "name": "Segment 2"}]
         stub_api.stub_starred_segments_endpoint(segments)
 
-        result = await query_segments(starred_only=True)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("query_segments", {"starred_only": True})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         # Check structure
         assert "segments" in data["data"]
@@ -123,41 +110,29 @@ class TestQuerySegments:
         # Check metadata
         assert data["metadata"]["query_type"] == "starred_segments"
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_starred_empty(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_segments_starred_empty(self, stub_api):
         """Test querying starred segments with no results."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_starred_segments_endpoint([])
 
-        result = await query_segments(starred_only=True)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("query_segments", {"starred_only": True})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert data["data"]["count"] == 0
         assert data["data"]["segments"] == []
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_explore(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_segments_explore(self, stub_api):
         """Test exploring segments in geographic area."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_explore_segments_endpoint(EXPLORE_SEGMENTS_RESPONSE)
 
         bounds = "37.7,-122.5,37.8,-122.4"
-        result = await query_segments(bounds=bounds)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("query_segments", {"bounds": bounds})
 
-        # Debug: print result if there's an error
-        if "error" in data:
-            print(f"Error in response: {data['error']}")
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         # Check structure
         assert "data" in data, f"Expected 'data' key, got: {data.keys()}"
@@ -178,167 +153,127 @@ class TestQuerySegments:
         assert data["metadata"]["query_type"] == "explore_segments"
         assert data["metadata"]["bounds"] == bounds
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_explore_with_activity_type(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_segments_explore_with_activity_type(self, stub_api):
         """Test exploring segments with activity type filter."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_explore_segments_endpoint(EXPLORE_SEGMENTS_RESPONSE)
 
         bounds = "37.7,-122.5,37.8,-122.4"
-        result = await query_segments(bounds=bounds, activity_type="riding")
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_segments", {"bounds": bounds, "activity_type": "riding"}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert data["data"]["count"] > 0
         assert data["metadata"]["activity_type"] == "riding"
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_explore_with_climb_categories(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_segments_explore_with_climb_categories(self, stub_api):
         """Test exploring segments with climb category filters."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_explore_segments_endpoint(EXPLORE_SEGMENTS_RESPONSE)
 
         bounds = "37.7,-122.5,37.8,-122.4"
-        result = await query_segments(
-            bounds=bounds, activity_type="riding", min_category=1, max_category=3
-        )
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_segments",
+                {"bounds": bounds, "activity_type": "riding", "min_category": 1, "max_category": 3},
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert data["data"]["count"] > 0
         assert data["metadata"]["min_category"] == 1
         assert data["metadata"]["max_category"] == 3
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_explore_invalid_bounds(
-        self, mock_validate, mock_load_config, mock_config
-    ):
+    async def test_query_segments_explore_invalid_bounds(self):
         """Test exploring segments with invalid bounds format."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         bounds = "37.7,-122.5"  # Only 2 values instead of 4
-        result = await query_segments(bounds=bounds)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("query_segments", {"bounds": bounds})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "error" in data
         assert "validation_error" in data["error"]["type"]
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_default_starred(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_segments_default_starred(self, stub_api):
         """Test that default query returns starred segments."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segments = [SUMMARY_SEGMENT]
         stub_api.stub_starred_segments_endpoint(segments)
 
-        result = await query_segments()
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("query_segments", {})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert data["metadata"]["query_type"] == "starred_segments"
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_with_limit(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_segments_with_limit(self, stub_api):
         """Test querying segments with custom limit."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segments = [SUMMARY_SEGMENT for _ in range(50)]
         stub_api.stub_starred_segments_endpoint(segments)
 
-        result = await query_segments(starred_only=True, limit=10)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("query_segments", {"starred_only": True, "limit": 10})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         # Should return max 10 segments
         assert len(data["data"]["segments"]) <= 10
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_with_feet_units(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_segments_with_feet_units(self, stub_api):
         """Test querying segments with feet/miles units."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segment_id = 229781
         stub_api.stub_segment_details_endpoint(segment_id, DETAILED_SEGMENT)
 
-        result = await query_segments(segment_id=segment_id, unit="feet")
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_segments", {"segment_id": segment_id, "unit": "feet"}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         # Check that formatted values use miles/feet
         assert "mi" in data["data"]["segment"]["distance"]["formatted"]
         assert "ft" in data["data"]["segment"]["elevation_high"]["formatted"]
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_not_found(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_segments_not_found(self, stub_api):
         """Test querying non-existent segment."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_error_response("/segments/999999", status_code=404)
 
-        result = await query_segments(segment_id=999999)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("query_segments", {"segment_id": 999999})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "error" in data
         assert "not_found" in data["error"]["type"]
         assert "suggestions" in data["error"]
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_not_authenticated(
-        self, mock_validate, mock_load_config, mock_config
-    ):
-        """Test querying segments when not authenticated."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = False
-
-        result = await query_segments()
-        data = json.loads(result)
-
-        assert "error" in data
-        assert "authentication_required" in data["error"]["type"]
-
 
 class TestStarSegment:
     """Test star_segment tool."""
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_star_segment_success(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_star_segment_success(self, stub_api):
         """Test successful segment starring."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segment_id = 229781
         starred_segment = {**DETAILED_SEGMENT, "starred": True}
         stub_api.stub_star_segment_endpoint(segment_id, starred_segment)
 
-        result = await star_segment(segment_id, starred=True)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "star_segment", {"segment_id": segment_id, "starred": True}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         # Check structure
         assert "data" in data
@@ -349,71 +284,46 @@ class TestStarSegment:
         # Check metadata
         assert "metadata" in data
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_unstar_segment_success(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_unstar_segment_success(self, stub_api):
         """Test successful segment unstarring."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segment_id = 229781
         unstarred_segment = {**DETAILED_SEGMENT, "starred": False}
         stub_api.stub_star_segment_endpoint(segment_id, unstarred_segment)
 
-        result = await star_segment(segment_id, starred=False)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "star_segment", {"segment_id": segment_id, "starred": False}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert data["data"]["segment_id"] == segment_id
         assert data["data"]["starred"] is False
         assert data["data"]["success"] is True
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_star_segment_not_found(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_star_segment_not_found(self, stub_api):
         """Test starring non-existent segment."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_error_response("/segments/999999/starred", method="PUT", status_code=404)
 
-        result = await star_segment(999999)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("star_segment", {"segment_id": 999999, "starred": True})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "error" in data
         assert "not_found" in data["error"]["type"]
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_star_segment_not_authenticated(
-        self, mock_validate, mock_load_config, mock_config
-    ):
-        """Test starring segment when not authenticated."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = False
-
-        result = await star_segment(229781)
-        data = json.loads(result)
-
-        assert "error" in data
-        assert "authentication_required" in data["error"]["type"]
-
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_star_segment_rate_limit(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_star_segment_rate_limit(self, stub_api):
         """Test starring segment with rate limit error."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_error_response("/segments/229781/starred", method="PUT", status_code=429)
 
-        result = await star_segment(229781)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("star_segment", {"segment_id": 229781, "starred": True})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "error" in data
         assert "rate_limit" in data["error"]["type"]
@@ -422,20 +332,16 @@ class TestStarSegment:
 class TestGetSegmentLeaderboard:
     """Test get_segment_leaderboard tool."""
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_get_segment_leaderboard_success(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_get_segment_leaderboard_success(self, stub_api):
         """Test successful segment leaderboard retrieval."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segment_id = 229781
         stub_api.stub_segment_leaderboard_endpoint(segment_id, SEGMENT_LEADERBOARD)
 
-        result = await get_segment_leaderboard(segment_id)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("get_segment_leaderboard", {"segment_id": segment_id})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         # Check structure
         assert "data" in data
@@ -455,124 +361,105 @@ class TestGetSegmentLeaderboard:
         assert data["metadata"]["segment_id"] == segment_id
         assert "filters" in data["metadata"]
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_get_segment_leaderboard_with_gender_filter(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_get_segment_leaderboard_with_gender_filter(self, stub_api):
         """Test segment leaderboard with gender filter."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segment_id = 229781
         stub_api.stub_segment_leaderboard_endpoint(segment_id, SEGMENT_LEADERBOARD, gender="M")
 
-        result = await get_segment_leaderboard(segment_id, gender="M")
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "get_segment_leaderboard", {"segment_id": segment_id, "gender": "M"}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert data["metadata"]["filters"]["gender"] == "M"
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_get_segment_leaderboard_with_age_group(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_get_segment_leaderboard_with_age_group(self, stub_api):
         """Test segment leaderboard with age group filter."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segment_id = 229781
         stub_api.stub_segment_leaderboard_endpoint(
             segment_id, SEGMENT_LEADERBOARD, age_group="25_34"
         )
 
-        result = await get_segment_leaderboard(segment_id, age_group="25_34")
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "get_segment_leaderboard", {"segment_id": segment_id, "age_group": "25_34"}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert data["metadata"]["filters"]["age_group"] == "25_34"
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_get_segment_leaderboard_with_weight_class(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_get_segment_leaderboard_with_weight_class(self, stub_api):
         """Test segment leaderboard with weight class filter."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segment_id = 229781
         stub_api.stub_segment_leaderboard_endpoint(
             segment_id, SEGMENT_LEADERBOARD, weight_class="75_84"
         )
 
-        result = await get_segment_leaderboard(segment_id, weight_class="75_84")
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "get_segment_leaderboard", {"segment_id": segment_id, "weight_class": "75_84"}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert data["metadata"]["filters"]["weight_class"] == "75_84"
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_get_segment_leaderboard_with_following(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_get_segment_leaderboard_with_following(self, stub_api):
         """Test segment leaderboard with following filter."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segment_id = 229781
         stub_api.stub_segment_leaderboard_endpoint(segment_id, SEGMENT_LEADERBOARD, following=True)
 
-        result = await get_segment_leaderboard(segment_id, following=True)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "get_segment_leaderboard", {"segment_id": segment_id, "following": True}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert data["metadata"]["filters"]["following"] is True
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_get_segment_leaderboard_with_club(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_get_segment_leaderboard_with_club(self, stub_api):
         """Test segment leaderboard with club filter."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segment_id = 229781
         club_id = 12345
         stub_api.stub_segment_leaderboard_endpoint(segment_id, SEGMENT_LEADERBOARD, club_id=club_id)
 
-        result = await get_segment_leaderboard(segment_id, club_id=club_id)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "get_segment_leaderboard", {"segment_id": segment_id, "club_id": club_id}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert data["metadata"]["filters"]["club_id"] == club_id
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_get_segment_leaderboard_with_date_range(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_get_segment_leaderboard_with_date_range(self, stub_api):
         """Test segment leaderboard with date range filter."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segment_id = 229781
         stub_api.stub_segment_leaderboard_endpoint(
             segment_id, SEGMENT_LEADERBOARD, date_range="this_year"
         )
 
-        result = await get_segment_leaderboard(segment_id, date_range="this_year")
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "get_segment_leaderboard", {"segment_id": segment_id, "date_range": "this_year"}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert data["metadata"]["filters"]["date_range"] == "this_year"
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_get_segment_leaderboard_with_multiple_filters(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_get_segment_leaderboard_with_multiple_filters(self, stub_api):
         """Test segment leaderboard with multiple filters."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segment_id = 229781
         stub_api.stub_segment_leaderboard_endpoint(
             segment_id,
@@ -582,25 +469,27 @@ class TestGetSegmentLeaderboard:
             date_range="this_month",
         )
 
-        result = await get_segment_leaderboard(
-            segment_id, gender="F", age_group="35_44", date_range="this_month"
-        )
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "get_segment_leaderboard",
+                {
+                    "segment_id": segment_id,
+                    "gender": "F",
+                    "age_group": "35_44",
+                    "date_range": "this_month",
+                },
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         filters = data["metadata"]["filters"]
         assert filters["gender"] == "F"
         assert filters["age_group"] == "35_44"
         assert filters["date_range"] == "this_month"
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_get_segment_leaderboard_empty(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_get_segment_leaderboard_empty(self, stub_api):
         """Test segment leaderboard with no entries."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segment_id = 229781
         empty_leaderboard = {
             "entry_count": 0,
@@ -610,58 +499,35 @@ class TestGetSegmentLeaderboard:
         }
         stub_api.stub_segment_leaderboard_endpoint(segment_id, empty_leaderboard)
 
-        result = await get_segment_leaderboard(segment_id)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("get_segment_leaderboard", {"segment_id": segment_id})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert data["data"]["entry_count"] == 0
         assert data["data"]["entries"] == []
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_get_segment_leaderboard_not_found(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_get_segment_leaderboard_not_found(self, stub_api):
         """Test segment leaderboard with non-existent segment."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_error_response("/segments/999999/leaderboard", status_code=404)
 
-        result = await get_segment_leaderboard(999999)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("get_segment_leaderboard", {"segment_id": 999999})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "error" in data
         assert "not_found" in data["error"]["type"]
-
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_get_segment_leaderboard_not_authenticated(
-        self, mock_validate, mock_load_config, mock_config
-    ):
-        """Test segment leaderboard when not authenticated."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = False
-
-        result = await get_segment_leaderboard(229781)
-        data = json.loads(result)
-
-        assert "error" in data
-        assert "authentication_required" in data["error"]["type"]
 
 
 class TestSegmentPagination:
     """Test pagination behavior for segment tools."""
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_pagination_starred(
-        self, mock_validate, mock_load_config, mock_config, respx_mock
-    ):
+    async def test_query_segments_pagination_starred(self, respx_mock):
         """Test pagination for starred segments list."""
         from httpx import Response
-
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
 
         # Create 11 segments (limit+1 to trigger has_more)
         segments = [{**SUMMARY_SEGMENT, "id": 5000 + i, "name": f"Segment {i}"} for i in range(11)]
@@ -671,8 +537,11 @@ class TestSegmentPagination:
 
         respx_mock.get("/segments/starred").mock(side_effect=segments_response)
 
-        result = await query_segments(starred_only=True, limit=10)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("query_segments", {"starred_only": True, "limit": 10})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "pagination" in data
         assert data["pagination"]["has_more"] is True
@@ -680,15 +549,8 @@ class TestSegmentPagination:
         assert data["pagination"]["limit"] == 10
         assert len(data["data"]["segments"]) == 10
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_explore_pagination(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_segments_explore_pagination(self, stub_api):
         """Test client-side pagination for explore segments."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         # Create 25 segments in explore result
         all_segments = [
             {
@@ -709,11 +571,13 @@ class TestSegmentPagination:
         stub_api.stub_explore_segments_endpoint(explore_result)
 
         # First page (limit=10)
-        result = await query_segments(
-            bounds="37.77,-122.45,37.80,-122.40",
-            limit=10,
-        )
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_segments", {"bounds": "37.77,-122.45,37.80,-122.40", "limit": 10}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert data["pagination"]["has_more"] is True
         assert len(data["data"]["segments"]) == 10
@@ -726,25 +590,20 @@ class TestSegmentPagination:
 
         stub_api.stub_explore_segments_endpoint(explore_result)
 
-        result = await query_segments(
-            bounds="37.77,-122.45,37.80,-122.40",
-            cursor=cursor,
-            limit=10,
-        )
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_segments",
+                {"bounds": "37.77,-122.45,37.80,-122.40", "cursor": cursor, "limit": 10},
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert len(data["data"]["segments"]) == 10
         assert data["data"]["segments"][0]["id"] == 6010  # Offset of 10
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_get_segment_leaderboard_pagination_has_more(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_get_segment_leaderboard_pagination_has_more(self, stub_api):
         """Test leaderboard pagination returns correct metadata."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         segment_id = 229781
 
         # Create leaderboard with 51 entries (more than default 50)
@@ -768,8 +627,13 @@ class TestSegmentPagination:
             per_page=51,
         )
 
-        result = await get_segment_leaderboard(segment_id, limit=50)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "get_segment_leaderboard", {"segment_id": segment_id, "limit": 50}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "pagination" in data
         assert data["pagination"]["has_more"] is True
@@ -777,23 +641,24 @@ class TestSegmentPagination:
         assert data["pagination"]["limit"] == 50
         assert len(data["data"]["entries"]) == 50  # Should trim to limit
 
-    @patch("strava_mcp.tools.segments.load_config")
-    @patch("strava_mcp.tools.segments.validate_credentials")
-    async def test_query_segments_limit_validation(
-        self, mock_validate, mock_load_config, mock_config
-    ):
+    async def test_query_segments_limit_validation(self):
         """Test segment limit validation."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         # Test limit too high
-        result = await query_segments(starred_only=True, limit=100)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("query_segments", {"starred_only": True, "limit": 100})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
         assert "error" in data
         assert "limit" in data["error"]["message"].lower()
 
         # Test efforts_limit too high
-        result = await query_segments(segment_id=123, include_efforts=True, efforts_limit=100)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_segments", {"segment_id": 123, "include_efforts": True, "efforts_limit": 100}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
         assert "error" in data
         assert "efforts_limit" in data["error"]["message"].lower()

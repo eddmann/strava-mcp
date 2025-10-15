@@ -5,7 +5,9 @@ This module provides route query and export tools with structured JSON output.
 
 from typing import Annotated, Any, Literal
 
-from ..auth import load_config, validate_credentials
+from fastmcp import Context
+
+from ..auth import StravaConfig
 from ..client import StravaAPIError, StravaClient
 from ..models import MeasurementPreference
 from ..response_builder import ResponseBuilder
@@ -16,6 +18,7 @@ async def query_routes(
     cursor: Annotated[str | None, "Pagination cursor from previous response"] = None,
     limit: Annotated[int, "Max routes per page (1-50, default 10)"] = 10,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
+    ctx: Context | None = None,
 ) -> str:
     """Query Strava routes with pagination support.
 
@@ -48,14 +51,8 @@ async def query_routes(
         - List routes: query_routes()
         - Paginate results: query_routes(cursor="eyJwYWdl...")
     """
-    config = load_config()
-
-    if not validate_credentials(config):
-        return ResponseBuilder.build_error_response(
-            "Strava credentials not configured",
-            error_type="authentication_required",
-            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
-        )
+    assert ctx is not None
+    config: StravaConfig = ctx.get_state("config")
 
     # Validate limit
     if limit < 1 or limit > 50:
@@ -236,6 +233,7 @@ async def _list_routes(
 async def export_route(
     route_id: Annotated[int, "Route ID"],
     format: Annotated[Literal["gpx", "tcx"], "Export format ('gpx' or 'tcx')"] = "gpx",
+    ctx: Context | None = None,
 ) -> str:
     """Export a route to GPX or TCX format.
 
@@ -254,14 +252,8 @@ async def export_route(
 
     Note: The content field contains the raw GPX/TCX XML data.
     """
-    config = load_config()
-
-    if not validate_credentials(config):
-        return ResponseBuilder.build_error_response(
-            "Strava credentials not configured",
-            error_type="authentication_required",
-            suggestions=["Run 'strava-mcp-auth' to set up authentication"],
-        )
+    assert ctx is not None
+    config: StravaConfig = ctx.get_state("config")
 
     if format not in ["gpx", "tcx"]:
         return ResponseBuilder.build_error_response(

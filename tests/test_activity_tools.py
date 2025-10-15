@@ -2,11 +2,11 @@
 
 import json
 from datetime import UTC
-from unittest.mock import patch
 
 import pytest
+from fastmcp import Client
 
-from strava_mcp.tools.activities import get_activity_social, query_activities
+from strava_mcp.server import mcp
 from tests.fixtures.activity_fixtures import (
     ACTIVITY_COMMENTS,
     ACTIVITY_KUDOERS,
@@ -16,6 +16,7 @@ from tests.fixtures.activity_fixtures import (
     DETAILED_ACTIVITY,
     SUMMARY_ACTIVITY,
 )
+from tests.helpers import get_text_content
 from tests.stubs.strava_api_stub import StravaAPIStubber
 
 # Constants for test IDs
@@ -32,16 +33,9 @@ def stub_api(respx_mock):
 class TestQueryActivities:
     """Test query_activities tool."""
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_query_activities_list_recent(
-        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
-    ):
+    async def test_query_activities_list_recent(self, stub_api, respx_mock):
         """Test querying recent activities list."""
         from httpx import Response
-
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
 
         activities = [SUMMARY_ACTIVITY]
         # Stub paginated responses - return activities for page 1, empty for subsequent pages
@@ -54,8 +48,11 @@ class TestQueryActivities:
 
         respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
 
-        result = await query_activities(time_range="recent")
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("query_activities", {"time_range": "recent"})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "data" in data
         assert "activities" in data["data"]
@@ -75,19 +72,17 @@ class TestQueryActivities:
         assert data["metadata"]["query_type"] == "activity_list"
         assert "time_range" in data["metadata"]
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_query_activities_single_by_id(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_activities_single_by_id(self, stub_api):
         """Test querying single activity by ID."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
 
-        result = await query_activities(activity_id=DETAILED_ACTIVITY_ID)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_activities", {"activity_id": DETAILED_ACTIVITY_ID}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "data" in data
         assert "activity" in data["data"]
@@ -104,24 +99,19 @@ class TestQueryActivities:
         assert data["metadata"]["query_type"] == "single_activity"
         assert data["metadata"]["activity_id"] == DETAILED_ACTIVITY_ID
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_query_activities_with_laps(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_activities_with_laps(self, stub_api):
         """Test querying activity with laps included."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
         stub_api.stub_activity_laps_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_LAPS)
 
-        result = await query_activities(activity_id=DETAILED_ACTIVITY_ID, include_laps=True)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_activities",
+                {"activity_id": DETAILED_ACTIVITY_ID, "include_laps": True},
+            )
 
-        # Debug: print result if there's an error
-        if "error" in data:
-            print(f"Error in response: {data['error']}")
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "data" in data, f"Expected 'data' key, got: {data.keys()}"
         assert "laps" in data["data"]
@@ -130,94 +120,66 @@ class TestQueryActivities:
         assert "includes" in data["metadata"]
         assert "laps" in data["metadata"]["includes"]
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_query_activities_with_zones(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_activities_with_zones(self, stub_api):
         """Test querying activity with zones included."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
         stub_api.stub_activity_zones_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_ZONES)
 
-        result = await query_activities(activity_id=DETAILED_ACTIVITY_ID, include_zones=True)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_activities",
+                {"activity_id": DETAILED_ACTIVITY_ID, "include_zones": True},
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "zones" in data["data"]
         assert "includes" in data["metadata"]
         assert "zones" in data["metadata"]["includes"]
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_query_activities_with_streams(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_activities_with_streams(self, stub_api):
         """Test querying activity with streams included."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
         stub_api.stub_activity_streams_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_STREAMS)
 
-        result = await query_activities(
-            activity_id=DETAILED_ACTIVITY_ID, include_streams="time,heartrate,watts"
-        )
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_activities",
+                {
+                    "activity_id": DETAILED_ACTIVITY_ID,
+                    "include_streams": "time,heartrate,watts",
+                },
+            )
 
-        # Debug: print result if there's an error
-        if "error" in data:
-            print(f"Error in response: {data['error']}")
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "data" in data, f"Expected 'data' key, got: {data.keys()}"
         assert "streams" in data["data"]
         assert "includes" in data["metadata"]
         assert any("streams:" in inc for inc in data["metadata"]["includes"])
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_query_activities_empty_result(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_query_activities_empty_result(self, stub_api):
         """Test querying activities with no results."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_activities_endpoint([])
 
-        result = await query_activities(time_range="recent")
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("query_activities", {"time_range": "recent"})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert data["data"]["activities"] == []
         assert data["data"]["aggregated"]["count"] == 0
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_query_activities_not_authenticated(
-        self, mock_validate, mock_load_config, mock_config
-    ):
-        """Test querying activities when not authenticated."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = False
-
-        result = await query_activities()
-        data = json.loads(result)
-
-        assert "error" in data
-        assert "authentication_required" in data["error"]["type"]
-
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_query_activities_invalid_limit(
-        self, mock_validate, mock_load_config, mock_config
-    ):
+    async def test_query_activities_invalid_limit(self):
         """Test querying activities with invalid limit."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
+        async with Client(mcp) as client:
+            result = await client.call_tool("query_activities", {"limit": 5000})
 
-        result = await query_activities(limit=5000)
-        data = json.loads(result)
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "error" in data
         assert "validation_error" in data["error"]["type"]
@@ -226,21 +188,19 @@ class TestQueryActivities:
 class TestGetActivitySocial:
     """Test get_activity_social tool."""
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_get_activity_social_with_comments_and_kudos(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_get_activity_social_with_comments_and_kudos(self, stub_api):
         """Test getting social data with comments and kudos."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
         stub_api.stub_activity_comments_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_COMMENTS)
         stub_api.stub_activity_kudoers_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_KUDOERS)
 
-        result = await get_activity_social(DETAILED_ACTIVITY_ID)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "get_activity_social", {"activity_id": DETAILED_ACTIVITY_ID}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "data" in data
         assert "activity" in data["data"]
@@ -266,37 +226,32 @@ class TestGetActivitySocial:
         assert "metadata" in data
         assert "includes" in data["metadata"]
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_get_activity_social_comments_only(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_get_activity_social_comments_only(self, stub_api):
         """Test getting only comments."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
         stub_api.stub_activity_comments_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_COMMENTS)
 
-        result = await get_activity_social(DETAILED_ACTIVITY_ID, include_kudos=False)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "get_activity_social",
+                {"activity_id": DETAILED_ACTIVITY_ID, "include_kudos": False},
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "comments" in data["data"]
         assert "kudos" not in data["data"]
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_get_activity_social_not_found(
-        self, mock_validate, mock_load_config, mock_config, stub_api
-    ):
+    async def test_get_activity_social_not_found(self, stub_api):
         """Test getting social data for non-existent activity."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
-
         stub_api.stub_error_response("/activities/999999", status_code=404)
 
-        result = await get_activity_social(999999)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool("get_activity_social", {"activity_id": 999999})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "error" in data
         assert "not_found" in data["error"]["type"]
@@ -306,18 +261,11 @@ class TestGetActivitySocial:
 class TestActivityPagination:
     """Test pagination behavior for activity tools."""
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_query_activities_pagination_first_page(
-        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
-    ):
+    async def test_query_activities_pagination_first_page(self, stub_api, respx_mock):
         """Test first page of paginated activities returns cursor."""
         from datetime import datetime
 
         from httpx import Response
-
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
 
         # Create 11 activities (limit+1 to trigger has_more) with recent dates
         now = datetime.now(UTC)
@@ -336,9 +284,12 @@ class TestActivityPagination:
 
         respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
 
-        # Request with limit=10 using a wide time range
-        result = await query_activities(time_range="90d", limit=10)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            # Request with limit=10 using a wide time range
+            result = await client.call_tool("query_activities", {"time_range": "90d", "limit": 10})
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         # Should have pagination
         assert "pagination" in data
@@ -350,20 +301,13 @@ class TestActivityPagination:
         # Should only return 10 items
         assert len(data["data"]["activities"]) == 10
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_query_activities_pagination_second_page(
-        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
-    ):
+    async def test_query_activities_pagination_second_page(self, stub_api, respx_mock):
         """Test using cursor to get second page."""
         from datetime import datetime
 
         from httpx import Response
 
         from strava_mcp.pagination import encode_cursor
-
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
 
         # Simulate second page having fewer items
         now = datetime.now(UTC)
@@ -385,62 +329,54 @@ class TestActivityPagination:
         # Create cursor for page 2
         cursor = encode_cursor(2, {"time_range": "90d"})
 
-        result = await query_activities(time_range="90d", cursor=cursor, limit=10)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_activities", {"time_range": "90d", "cursor": cursor, "limit": 10}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         # Should not have more pages
         assert data["pagination"]["has_more"] is False
         assert data["pagination"]["cursor"] is None
         assert data["pagination"]["returned"] == 5
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_query_activities_pagination_invalid_cursor(
-        self, mock_validate, mock_load_config, mock_config
-    ):
+    async def test_query_activities_pagination_invalid_cursor(self):
         """Test invalid cursor returns error."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
+        async with Client(mcp) as client:
+            result = await client.call_tool("query_activities", {"cursor": "invalid_cursor_string"})
 
-        result = await query_activities(cursor="invalid_cursor_string")
-        data = json.loads(result)
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         assert "error" in data
         assert data["error"]["type"] == "validation_error"
         assert "cursor" in data["error"]["message"].lower()
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_query_activities_limit_validation(
-        self, mock_validate, mock_load_config, mock_config
-    ):
+    async def test_query_activities_limit_validation(self):
         """Test limit parameter validation."""
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
+        async with Client(mcp) as client:
+            # Test limit too high
+            result = await client.call_tool("query_activities", {"limit": 100})
 
-        # Test limit too high
-        result = await query_activities(limit=100)
-        data = json.loads(result)
-        assert "error" in data
-        assert "limit" in data["error"]["message"].lower()
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
+            assert "error" in data
+            assert "limit" in data["error"]["message"].lower()
 
-        # Test limit too low
-        result = await query_activities(limit=0)
-        data = json.loads(result)
-        assert "error" in data
+            # Test limit too low
+            result = await client.call_tool("query_activities", {"limit": 0})
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_query_activities_reduced_limit_with_enrichments(
-        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
-    ):
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
+            assert "error" in data
+
+    async def test_query_activities_reduced_limit_with_enrichments(self, stub_api, respx_mock):
         """Test that enrichments trigger lower default limit."""
         from datetime import datetime
 
         from httpx import Response
-
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
 
         # Create 6 activities (more than enrichment limit of 5)
         now = datetime.now(UTC)
@@ -459,27 +395,27 @@ class TestActivityPagination:
 
         respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
 
-        # Request with enrichments (should default to limit=5)
-        # Note: We don't test actual enrichment fetching here, just the limit behavior
-        result = await query_activities(time_range="90d", include_laps=True)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            # Request with enrichments (should default to limit=5)
+            # Note: We don't test actual enrichment fetching here, just the limit behavior
+            result = await client.call_tool(
+                "query_activities", {"time_range": "90d", "include_laps": True}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         # Should use default limit of 5 for enrichments
         assert data["pagination"]["limit"] == 5
         assert len(data["data"]["activities"]) == 5
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
     async def test_query_activities_pagination_with_activity_type_filter(
-        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
+        self, stub_api, respx_mock
     ):
         """Test pagination with activity_type filter applied correctly."""
         from datetime import datetime
 
         from httpx import Response
-
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
 
         # Create 47 mixed activities (30 Runs, 17 Rides)
         now = datetime.now(UTC)
@@ -500,9 +436,14 @@ class TestActivityPagination:
 
         respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
 
-        # Request first page of Runs with limit=10
-        result = await query_activities(time_range="90d", activity_type="Run", limit=10)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            # Request first page of Runs with limit=10
+            result = await client.call_tool(
+                "query_activities", {"time_range": "90d", "activity_type": "Run", "limit": 10}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         # Should return exactly 10 Runs
         assert len(data["data"]["activities"]) == 10
@@ -514,18 +455,11 @@ class TestActivityPagination:
         assert data["pagination"]["limit"] == 10
         assert data["pagination"]["returned"] == 10
 
-    @patch("strava_mcp.tools.activities.load_config")
-    @patch("strava_mcp.tools.activities.validate_credentials")
-    async def test_query_activities_sparse_type_filtering(
-        self, mock_validate, mock_load_config, mock_config, stub_api, respx_mock
-    ):
+    async def test_query_activities_sparse_type_filtering(self, stub_api, respx_mock):
         """Test pagination with sparse activity type (requires multiple API pages)."""
         from datetime import datetime
 
         from httpx import Response
-
-        mock_load_config.return_value = mock_config
-        mock_validate.return_value = True
 
         # Create activities where Runs are sparse (1 Run per 10 activities)
         # Total: 300 activities, 30 Runs
@@ -569,9 +503,14 @@ class TestActivityPagination:
 
         respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
 
-        # Request first page of 10 Runs - should make multiple API calls to find them
-        result = await query_activities(time_range="90d", activity_type="Run", limit=10)
-        data = json.loads(result)
+        async with Client(mcp) as client:
+            # Request first page of 10 Runs - should make multiple API calls to find them
+            result = await client.call_tool(
+                "query_activities", {"time_range": "90d", "activity_type": "Run", "limit": 10}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
 
         # Should return exactly 10 Runs (from first 100 mixed activities)
         assert len(data["data"]["activities"]) == 10
