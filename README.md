@@ -212,6 +212,8 @@ _Note: The athlete profile resource (`strava://athlete/profile`) automatically p
 "Find runs similar to my last tempo workout"
 ```
 
+_Note: List-returning tools use cursor-based pagination with default limits (10 items for activities/segments/routes, 50 for leaderboards)._
+
 ## Available Tools
 
 ### Activities (2 tools)
