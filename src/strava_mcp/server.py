@@ -22,29 +22,90 @@ from .tools.routes import export_route, query_routes
 from .tools.segments import get_segment_leaderboard, query_segments, star_segment
 
 # Register activity tools
-mcp.tool()(query_activities)
-mcp.tool()(get_activity_social)
+mcp.tool(
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+    }
+)(query_activities)
+mcp.tool(
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+    }
+)(get_activity_social)
 
 # Register athlete tools
-mcp.tool()(get_athlete_profile)
+mcp.tool(
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+    }
+)(get_athlete_profile)
 
 # Register segment tools
-mcp.tool()(query_segments)
-mcp.tool()(star_segment)
-mcp.tool()(get_segment_leaderboard)
+mcp.tool(
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+    }
+)(query_segments)
+mcp.tool(
+    annotations={
+        "readOnlyHint": False,
+        "openWorldHint": False,
+        "destructiveHint": False,
+    }
+)(star_segment)
+mcp.tool(
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+    }
+)(get_segment_leaderboard)
 
 # Register route tools
-mcp.tool()(query_routes)
-mcp.tool()(export_route)
+mcp.tool(
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+    }
+)(query_routes)
+mcp.tool(
+    annotations={
+        "readOnlyHint": False,
+        "openWorldHint": False,
+    }
+)(export_route)
 
 # Register analysis tools
-mcp.tool()(analyze_training)
-mcp.tool()(compare_activities)
-mcp.tool()(find_similar_activities)
+mcp.tool(
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+    }
+)(analyze_training)
+mcp.tool(
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+    }
+)(compare_activities)
+mcp.tool(
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+    }
+)(find_similar_activities)
 
 
 # MCP Resources - Provide ongoing context
-@mcp.resource("strava://athlete/profile")
+@mcp.resource(
+    "strava://athlete/profile",
+    annotations={
+        "readOnlyHint": True,
+    },
+)
 async def athlete_profile_resource() -> str:
     """Complete athlete profile with stats, zones, and gear for context."""
     from .auth import load_config
