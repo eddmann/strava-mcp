@@ -7,7 +7,6 @@ from typing import Annotated, Any, Literal
 
 from fastmcp import Context
 
-from ..auth import StravaConfig
 from ..client import StravaAPIError, StravaClient
 from ..models import MeasurementPreference
 from ..response_builder import ResponseBuilder
@@ -71,7 +70,7 @@ async def query_segments(
         - Paginate results: query_segments(starred_only=True, cursor="eyJwYWdl...")
     """
     assert ctx is not None
-    config: StravaConfig = ctx.get_state("config")
+    client: StravaClient = ctx.get_state("client")
 
     # Coerce limits to int if passed as string
     if isinstance(limit, str):
@@ -104,25 +103,24 @@ async def query_segments(
         )
 
     try:
-        async with StravaClient(config) as client:
-            # Single segment mode
-            if segment_id is not None:
-                return await _get_single_segment(
-                    client, segment_id, include_efforts, unit, efforts_limit
-                )
+        # Single segment mode
+        if segment_id is not None:
+            return await _get_single_segment(
+                client, segment_id, include_efforts, unit, efforts_limit
+            )
 
-            # Starred segments mode
-            if starred_only:
-                return await _list_starred_segments(client, limit, cursor, unit)
-
-            # Explore segments mode
-            if bounds:
-                return await _explore_segments(
-                    client, bounds, activity_type, min_category, max_category, limit, cursor, unit
-                )
-
-            # Default: list starred segments
+        # Starred segments mode
+        if starred_only:
             return await _list_starred_segments(client, limit, cursor, unit)
+
+        # Explore segments mode
+        if bounds:
+            return await _explore_segments(
+                client, bounds, activity_type, min_category, max_category, limit, cursor, unit
+            )
+
+        # Default: list starred segments
+        return await _list_starred_segments(client, limit, cursor, unit)
 
     except ValueError as e:
         return ResponseBuilder.build_error_response(
@@ -457,19 +455,18 @@ async def star_segment(
     }
     """
     assert ctx is not None
-    config: StravaConfig = ctx.get_state("config")
+    client: StravaClient = ctx.get_state("client")
 
     try:
-        async with StravaClient(config) as client:
-            result = await client.star_segment(segment_id, starred)
+        result = await client.star_segment(segment_id, starred)
 
-            data = {
-                "segment_id": segment_id,
-                "starred": result.starred,
-                "success": True,
-            }
+        data = {
+            "segment_id": segment_id,
+            "starred": result.starred,
+            "success": True,
+        }
 
-            return ResponseBuilder.build_response(data)
+        return ResponseBuilder.build_response(data)
 
     except StravaAPIError as e:
         error_type = "api_error"
@@ -547,7 +544,7 @@ async def get_segment_leaderboard(
     from ..pagination import build_pagination_info, decode_cursor
 
     assert ctx is not None
-    config: StravaConfig = ctx.get_state("config")
+    client: StravaClient = ctx.get_state("client")
 
     # Coerce limit to int if passed as string
     if isinstance(limit, str):
@@ -579,79 +576,78 @@ async def get_segment_leaderboard(
             )
 
     try:
-        async with StravaClient(config) as client:
-            # Fetch limit+1 to detect if there are more pages
-            leaderboard = await client.get_segment_leaderboard(
-                segment_id=segment_id,
-                gender=gender,
-                age_group=age_group,
-                weight_class=weight_class,
-                following=following,
-                club_id=club_id,
-                date_range=date_range,
-                page=current_page,
-                per_page=limit + 1,
-            )
+        # Fetch limit+1 to detect if there are more pages
+        leaderboard = await client.get_segment_leaderboard(
+            segment_id=segment_id,
+            gender=gender,
+            age_group=age_group,
+            weight_class=weight_class,
+            following=following,
+            club_id=club_id,
+            date_range=date_range,
+            page=current_page,
+            per_page=limit + 1,
+        )
 
-            # Check if there are more results
-            has_more = len(leaderboard.entries) > limit
-            entries_to_return = leaderboard.entries[:limit]
+        # Check if there are more results
+        has_more = len(leaderboard.entries) > limit
+        entries_to_return = leaderboard.entries[:limit]
 
-            entries: list[dict[str, Any]] = []
-            for entry in entries_to_return:
-                entries.append(
-                    {
-                        "rank": entry.rank,
-                        "athlete_name": entry.athlete_name,
-                        "elapsed_time": {
-                            "seconds": entry.elapsed_time,
-                            "formatted": f"{entry.elapsed_time // 60}:{entry.elapsed_time % 60:02d}",
-                        },
-                        "moving_time": {
-                            "seconds": entry.moving_time,
-                            "formatted": f"{entry.moving_time // 60}:{entry.moving_time % 60:02d}",
-                        }
-                        if entry.moving_time
-                        else None,
-                        "start_date": ResponseBuilder.format_date_with_day(entry.start_date_local)
-                        if entry.start_date_local
-                        else None,
+        entries: list[dict[str, Any]] = []
+        for entry in entries_to_return:
+            entries.append(
+                {
+                    "rank": entry.rank,
+                    "athlete_name": entry.athlete_name,
+                    "elapsed_time": {
+                        "seconds": entry.elapsed_time,
+                        "formatted": f"{entry.elapsed_time // 60}:{entry.elapsed_time % 60:02d}",
+                    },
+                    "moving_time": {
+                        "seconds": entry.moving_time,
+                        "formatted": f"{entry.moving_time // 60}:{entry.moving_time % 60:02d}",
                     }
-                )
-
-            data: dict[str, Any] = {
-                "entries": entries,
-                "entry_count": leaderboard.entry_count,
-            }
-
-            filters: dict[str, Any] = {}
-            if gender:
-                filters["gender"] = gender
-            if age_group:
-                filters["age_group"] = age_group
-            if weight_class:
-                filters["weight_class"] = weight_class
-            if following:
-                filters["following"] = following
-            if club_id:
-                filters["club_id"] = club_id
-            if date_range:
-                filters["date_range"] = date_range
-
-            metadata: dict[str, Any] = {
-                "segment_id": segment_id,
-                "filters": filters,
-            }
-
-            pagination = build_pagination_info(
-                returned_count=len(entries),
-                limit=limit,
-                current_page=current_page,
-                has_more=has_more,
-                filters=filters,
+                    if entry.moving_time
+                    else None,
+                    "start_date": ResponseBuilder.format_date_with_day(entry.start_date_local)
+                    if entry.start_date_local
+                    else None,
+                }
             )
 
-            return ResponseBuilder.build_response(data, metadata=metadata, pagination=pagination)
+        data: dict[str, Any] = {
+            "entries": entries,
+            "entry_count": leaderboard.entry_count,
+        }
+
+        filters: dict[str, Any] = {}
+        if gender:
+            filters["gender"] = gender
+        if age_group:
+            filters["age_group"] = age_group
+        if weight_class:
+            filters["weight_class"] = weight_class
+        if following:
+            filters["following"] = following
+        if club_id:
+            filters["club_id"] = club_id
+        if date_range:
+            filters["date_range"] = date_range
+
+        metadata: dict[str, Any] = {
+            "segment_id": segment_id,
+            "filters": filters,
+        }
+
+        pagination = build_pagination_info(
+            returned_count=len(entries),
+            limit=limit,
+            current_page=current_page,
+            has_more=has_more,
+            filters=filters,
+        )
+
+        return ResponseBuilder.build_response(data, metadata=metadata, pagination=pagination)
 
     except StravaAPIError as e:
         error_type = "api_error"

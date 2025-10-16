@@ -10,9 +10,9 @@ load_dotenv()
 mcp = FastMCP("Strava")
 
 # Register middleware
-from .middleware import ConfigMiddleware
+from .middleware import ClientMiddleware
 
-mcp.add_middleware(ConfigMiddleware())
+mcp.add_middleware(ClientMiddleware())
 
 # Import and register tools
 from .tools.activities import get_activity_social, query_activities

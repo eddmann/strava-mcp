@@ -7,7 +7,6 @@ from typing import Annotated, Any, Literal
 
 from fastmcp import Context
 
-from ..auth import StravaConfig
 from ..client import StravaAPIError, StravaClient
 from ..models import MeasurementPreference
 from ..response_builder import ResponseBuilder
@@ -66,291 +65,290 @@ async def get_athlete_profile(
         - Get recent stats: get_athlete_profile(stats_period="recent")
     """
     assert ctx is not None
-    config: StravaConfig = ctx.get_state("config")
+    client: StravaClient = ctx.get_state("client")
 
     try:
-        async with StravaClient(config) as client:
-            # Get athlete profile
-            athlete = await client.get_athlete()
+        # Get athlete profile
+        athlete = await client.get_athlete()
 
-            # Build profile data
-            profile_data = {
-                "id": athlete.id,
-                "name": f"{athlete.firstname} {athlete.lastname}",
-                "username": athlete.username,
-                "location": {
-                    "city": athlete.city,
-                    "state": athlete.state,
-                    "country": athlete.country,
-                },
-                "sex": athlete.sex,
-                "created_at": athlete.created_at,
-                "updated_at": athlete.updated_at,
+        # Build profile data
+        profile_data = {
+            "id": athlete.id,
+            "name": f"{athlete.firstname} {athlete.lastname}",
+            "username": athlete.username,
+            "location": {
+                "city": athlete.city,
+                "state": athlete.state,
+                "country": athlete.country,
+            },
+            "sex": athlete.sex,
+            "created_at": athlete.created_at,
+            "updated_at": athlete.updated_at,
+        }
+
+        # Weight
+        if athlete.weight:
+            profile_data["weight"] = {  # type: ignore[assignment]
+                "kg": athlete.weight,
+                "formatted": f"{athlete.weight} kg"
+                if unit == "meters"
+                else f"{athlete.weight * 2.20462:.1f} lbs",
             }
 
-            # Weight
-            if athlete.weight:
-                profile_data["weight"] = {  # type: ignore[assignment]
-                    "kg": athlete.weight,
-                    "formatted": f"{athlete.weight} kg"
-                    if unit == "meters"
-                    else f"{athlete.weight * 2.20462:.1f} lbs",
+        # FTP
+        if athlete.ftp:
+            profile_data["ftp"] = {"watts": athlete.ftp}  # type: ignore[assignment]
+
+        # Measurement preference
+        profile_data["measurement_preference"] = athlete.measurement_preference
+
+        # Profile photo
+        if athlete.profile:
+            profile_data["profile_photo"] = athlete.profile
+
+        # Bikes
+        if athlete.bikes:
+            profile_data["bikes"] = [  # type: ignore[assignment]
+                {
+                    "id": bike.id,
+                    "name": bike.name,
+                    "primary": bike.primary,
+                    "distance": {
+                        "meters": bike.distance if bike.distance else 0,
+                        "formatted": f"{(bike.distance if bike.distance else 0) / 1000:.1f} km"
+                        if unit == "meters"
+                        else f"{(bike.distance if bike.distance else 0) * 0.000621371:.1f} mi",
+                    },
+                }
+                for bike in athlete.bikes
+            ]
+
+        # Shoes
+        if athlete.shoes:
+            profile_data["shoes"] = [  # type: ignore[assignment]
+                {
+                    "id": shoe.id,
+                    "name": shoe.name,
+                    "primary": shoe.primary,
+                    "distance": {
+                        "meters": shoe.distance if shoe.distance else 0,
+                        "formatted": f"{(shoe.distance if shoe.distance else 0) / 1000:.1f} km"
+                        if unit == "meters"
+                        else f"{(shoe.distance if shoe.distance else 0) * 0.000621371:.1f} mi",
+                    },
+                }
+                for shoe in athlete.shoes
+            ]
+
+        data: dict[str, Any] = {"profile": profile_data}
+        metadata: dict[str, list[str]] = {"includes": []}
+
+        # Add statistics if requested
+        if include_stats:
+            if athlete.id is None:
+                return ResponseBuilder.build_error_response(
+                    "Athlete ID is required to fetch statistics",
+                    error_type="invalid_data",
+                )
+            stats = await client.get_athlete_stats(athlete.id)
+
+            statistics = {}
+
+            # Recent stats (last 4 weeks)
+            if stats_period in ["recent", "all"]:
+                recent_run = stats.recent_run_totals
+                recent_ride = stats.recent_ride_totals
+                recent_swim = stats.recent_swim_totals
+
+                statistics["recent"] = {
+                    "description": "Last 4 weeks",
+                    "run": {
+                        "count": recent_run.count,
+                        "distance": {
+                            "meters": recent_run.distance,
+                            "formatted": f"{recent_run.distance / 1000:.1f} km"
+                            if unit == "meters"
+                            else f"{recent_run.distance * 0.000621371:.1f} mi",
+                        },
+                        "moving_time": {
+                            "seconds": recent_run.moving_time,
+                            "formatted": f"{recent_run.moving_time // 3600}h {(recent_run.moving_time % 3600) // 60}m",
+                        },
+                        "elevation_gain": {
+                            "meters": recent_run.elevation_gain,
+                            "formatted": f"{recent_run.elevation_gain:.0f} m"
+                            if unit == "meters"
+                            else f"{recent_run.elevation_gain * 3.28084:.0f} ft",
+                        },
+                    },
+                    "ride": {
+                        "count": recent_ride.count,
+                        "distance": {
+                            "meters": recent_ride.distance,
+                            "formatted": f"{recent_ride.distance / 1000:.1f} km"
+                            if unit == "meters"
+                            else f"{recent_ride.distance * 0.000621371:.1f} mi",
+                        },
+                        "moving_time": {
+                            "seconds": recent_ride.moving_time,
+                            "formatted": f"{recent_ride.moving_time // 3600}h {(recent_ride.moving_time % 3600) // 60}m",
+                        },
+                        "elevation_gain": {
+                            "meters": recent_ride.elevation_gain,
+                            "formatted": f"{recent_ride.elevation_gain:.0f} m"
+                            if unit == "meters"
+                            else f"{recent_ride.elevation_gain * 3.28084:.0f} ft",
+                        },
+                    },
+                    "swim": {
+                        "count": recent_swim.count,
+                        "distance": {
+                            "meters": recent_swim.distance,
+                            "formatted": f"{recent_swim.distance / 1000:.1f} km"
+                            if unit == "meters"
+                            else f"{recent_swim.distance * 0.000621371:.1f} mi",
+                        },
+                        "moving_time": {
+                            "seconds": recent_swim.moving_time,
+                            "formatted": f"{recent_swim.moving_time // 3600}h {(recent_swim.moving_time % 3600) // 60}m",
+                        },
+                    },
                 }
 
-            # FTP
-            if athlete.ftp:
-                profile_data["ftp"] = {"watts": athlete.ftp}  # type: ignore[assignment]
+            # YTD stats
+            if stats_period in ["ytd", "all"]:
+                ytd_run = stats.ytd_run_totals
+                ytd_ride = stats.ytd_ride_totals
+                ytd_swim = stats.ytd_swim_totals
 
-            # Measurement preference
-            profile_data["measurement_preference"] = athlete.measurement_preference
-
-            # Profile photo
-            if athlete.profile:
-                profile_data["profile_photo"] = athlete.profile
-
-            # Bikes
-            if athlete.bikes:
-                profile_data["bikes"] = [  # type: ignore[assignment]
-                    {
-                        "id": bike.id,
-                        "name": bike.name,
-                        "primary": bike.primary,
+                statistics["ytd"] = {
+                    "description": "Year to date",
+                    "run": {
+                        "count": ytd_run.count,
                         "distance": {
-                            "meters": bike.distance if bike.distance else 0,
-                            "formatted": f"{(bike.distance if bike.distance else 0) / 1000:.1f} km"
+                            "meters": ytd_run.distance,
+                            "formatted": f"{ytd_run.distance / 1000:.1f} km"
                             if unit == "meters"
-                            else f"{(bike.distance if bike.distance else 0) * 0.000621371:.1f} mi",
+                            else f"{ytd_run.distance * 0.000621371:.1f} mi",
                         },
-                    }
-                    for bike in athlete.bikes
-                ]
-
-            # Shoes
-            if athlete.shoes:
-                profile_data["shoes"] = [  # type: ignore[assignment]
-                    {
-                        "id": shoe.id,
-                        "name": shoe.name,
-                        "primary": shoe.primary,
+                        "moving_time": {
+                            "seconds": ytd_run.moving_time,
+                            "formatted": f"{ytd_run.moving_time // 3600}h {(ytd_run.moving_time % 3600) // 60}m",
+                        },
+                        "elevation_gain": {
+                            "meters": ytd_run.elevation_gain,
+                            "formatted": f"{ytd_run.elevation_gain:.0f} m"
+                            if unit == "meters"
+                            else f"{ytd_run.elevation_gain * 3.28084:.0f} ft",
+                        },
+                    },
+                    "ride": {
+                        "count": ytd_ride.count,
                         "distance": {
-                            "meters": shoe.distance if shoe.distance else 0,
-                            "formatted": f"{(shoe.distance if shoe.distance else 0) / 1000:.1f} km"
+                            "meters": ytd_ride.distance,
+                            "formatted": f"{ytd_ride.distance / 1000:.1f} km"
                             if unit == "meters"
-                            else f"{(shoe.distance if shoe.distance else 0) * 0.000621371:.1f} mi",
+                            else f"{ytd_ride.distance * 0.000621371:.1f} mi",
                         },
-                    }
-                    for shoe in athlete.shoes
-                ]
-
-            data: dict[str, Any] = {"profile": profile_data}
-            metadata: dict[str, list[str]] = {"includes": []}
-
-            # Add statistics if requested
-            if include_stats:
-                if athlete.id is None:
-                    return ResponseBuilder.build_error_response(
-                        "Athlete ID is required to fetch statistics",
-                        error_type="invalid_data",
-                    )
-                stats = await client.get_athlete_stats(athlete.id)
-
-                statistics = {}
-
-                # Recent stats (last 4 weeks)
-                if stats_period in ["recent", "all"]:
-                    recent_run = stats.recent_run_totals
-                    recent_ride = stats.recent_ride_totals
-                    recent_swim = stats.recent_swim_totals
-
-                    statistics["recent"] = {
-                        "description": "Last 4 weeks",
-                        "run": {
-                            "count": recent_run.count,
-                            "distance": {
-                                "meters": recent_run.distance,
-                                "formatted": f"{recent_run.distance / 1000:.1f} km"
-                                if unit == "meters"
-                                else f"{recent_run.distance * 0.000621371:.1f} mi",
-                            },
-                            "moving_time": {
-                                "seconds": recent_run.moving_time,
-                                "formatted": f"{recent_run.moving_time // 3600}h {(recent_run.moving_time % 3600) // 60}m",
-                            },
-                            "elevation_gain": {
-                                "meters": recent_run.elevation_gain,
-                                "formatted": f"{recent_run.elevation_gain:.0f} m"
-                                if unit == "meters"
-                                else f"{recent_run.elevation_gain * 3.28084:.0f} ft",
-                            },
+                        "moving_time": {
+                            "seconds": ytd_ride.moving_time,
+                            "formatted": f"{ytd_ride.moving_time // 3600}h {(ytd_ride.moving_time % 3600) // 60}m",
                         },
-                        "ride": {
-                            "count": recent_ride.count,
-                            "distance": {
-                                "meters": recent_ride.distance,
-                                "formatted": f"{recent_ride.distance / 1000:.1f} km"
-                                if unit == "meters"
-                                else f"{recent_ride.distance * 0.000621371:.1f} mi",
-                            },
-                            "moving_time": {
-                                "seconds": recent_ride.moving_time,
-                                "formatted": f"{recent_ride.moving_time // 3600}h {(recent_ride.moving_time % 3600) // 60}m",
-                            },
-                            "elevation_gain": {
-                                "meters": recent_ride.elevation_gain,
-                                "formatted": f"{recent_ride.elevation_gain:.0f} m"
-                                if unit == "meters"
-                                else f"{recent_ride.elevation_gain * 3.28084:.0f} ft",
-                            },
+                        "elevation_gain": {
+                            "meters": ytd_ride.elevation_gain,
+                            "formatted": f"{ytd_ride.elevation_gain:.0f} m"
+                            if unit == "meters"
+                            else f"{ytd_ride.elevation_gain * 3.28084:.0f} ft",
                         },
-                        "swim": {
-                            "count": recent_swim.count,
-                            "distance": {
-                                "meters": recent_swim.distance,
-                                "formatted": f"{recent_swim.distance / 1000:.1f} km"
-                                if unit == "meters"
-                                else f"{recent_swim.distance * 0.000621371:.1f} mi",
-                            },
-                            "moving_time": {
-                                "seconds": recent_swim.moving_time,
-                                "formatted": f"{recent_swim.moving_time // 3600}h {(recent_swim.moving_time % 3600) // 60}m",
-                            },
+                    },
+                    "swim": {
+                        "count": ytd_swim.count,
+                        "distance": {
+                            "meters": ytd_swim.distance,
+                            "formatted": f"{ytd_swim.distance / 1000:.1f} km"
+                            if unit == "meters"
+                            else f"{ytd_swim.distance * 0.000621371:.1f} mi",
                         },
-                    }
-
-                # YTD stats
-                if stats_period in ["ytd", "all"]:
-                    ytd_run = stats.ytd_run_totals
-                    ytd_ride = stats.ytd_ride_totals
-                    ytd_swim = stats.ytd_swim_totals
-
-                    statistics["ytd"] = {
-                        "description": "Year to date",
-                        "run": {
-                            "count": ytd_run.count,
-                            "distance": {
-                                "meters": ytd_run.distance,
-                                "formatted": f"{ytd_run.distance / 1000:.1f} km"
-                                if unit == "meters"
-                                else f"{ytd_run.distance * 0.000621371:.1f} mi",
-                            },
-                            "moving_time": {
-                                "seconds": ytd_run.moving_time,
-                                "formatted": f"{ytd_run.moving_time // 3600}h {(ytd_run.moving_time % 3600) // 60}m",
-                            },
-                            "elevation_gain": {
-                                "meters": ytd_run.elevation_gain,
-                                "formatted": f"{ytd_run.elevation_gain:.0f} m"
-                                if unit == "meters"
-                                else f"{ytd_run.elevation_gain * 3.28084:.0f} ft",
-                            },
+                        "moving_time": {
+                            "seconds": ytd_swim.moving_time,
+                            "formatted": f"{ytd_swim.moving_time // 3600}h {(ytd_swim.moving_time % 3600) // 60}m",
                         },
-                        "ride": {
-                            "count": ytd_ride.count,
-                            "distance": {
-                                "meters": ytd_ride.distance,
-                                "formatted": f"{ytd_ride.distance / 1000:.1f} km"
-                                if unit == "meters"
-                                else f"{ytd_ride.distance * 0.000621371:.1f} mi",
-                            },
-                            "moving_time": {
-                                "seconds": ytd_ride.moving_time,
-                                "formatted": f"{ytd_ride.moving_time // 3600}h {(ytd_ride.moving_time % 3600) // 60}m",
-                            },
-                            "elevation_gain": {
-                                "meters": ytd_ride.elevation_gain,
-                                "formatted": f"{ytd_ride.elevation_gain:.0f} m"
-                                if unit == "meters"
-                                else f"{ytd_ride.elevation_gain * 3.28084:.0f} ft",
-                            },
+                    },
+                }
+
+            # All-time stats
+            if stats_period == "all":
+                all_run = stats.all_run_totals
+                all_ride = stats.all_ride_totals
+                all_swim = stats.all_swim_totals
+
+                statistics["all_time"] = {
+                    "description": "All time",
+                    "run": {
+                        "count": all_run.count,
+                        "distance": {
+                            "meters": all_run.distance,
+                            "formatted": f"{all_run.distance / 1000:.1f} km"
+                            if unit == "meters"
+                            else f"{all_run.distance * 0.000621371:.1f} mi",
                         },
-                        "swim": {
-                            "count": ytd_swim.count,
-                            "distance": {
-                                "meters": ytd_swim.distance,
-                                "formatted": f"{ytd_swim.distance / 1000:.1f} km"
-                                if unit == "meters"
-                                else f"{ytd_swim.distance * 0.000621371:.1f} mi",
-                            },
-                            "moving_time": {
-                                "seconds": ytd_swim.moving_time,
-                                "formatted": f"{ytd_swim.moving_time // 3600}h {(ytd_swim.moving_time % 3600) // 60}m",
-                            },
+                        "moving_time": {
+                            "seconds": all_run.moving_time,
+                            "formatted": f"{all_run.moving_time // 3600}h {(all_run.moving_time % 3600) // 60}m",
                         },
-                    }
-
-                # All-time stats
-                if stats_period == "all":
-                    all_run = stats.all_run_totals
-                    all_ride = stats.all_ride_totals
-                    all_swim = stats.all_swim_totals
-
-                    statistics["all_time"] = {
-                        "description": "All time",
-                        "run": {
-                            "count": all_run.count,
-                            "distance": {
-                                "meters": all_run.distance,
-                                "formatted": f"{all_run.distance / 1000:.1f} km"
-                                if unit == "meters"
-                                else f"{all_run.distance * 0.000621371:.1f} mi",
-                            },
-                            "moving_time": {
-                                "seconds": all_run.moving_time,
-                                "formatted": f"{all_run.moving_time // 3600}h {(all_run.moving_time % 3600) // 60}m",
-                            },
-                            "elevation_gain": {
-                                "meters": all_run.elevation_gain,
-                                "formatted": f"{all_run.elevation_gain:.0f} m"
-                                if unit == "meters"
-                                else f"{all_run.elevation_gain * 3.28084:.0f} ft",
-                            },
+                        "elevation_gain": {
+                            "meters": all_run.elevation_gain,
+                            "formatted": f"{all_run.elevation_gain:.0f} m"
+                            if unit == "meters"
+                            else f"{all_run.elevation_gain * 3.28084:.0f} ft",
                         },
-                        "ride": {
-                            "count": all_ride.count,
-                            "distance": {
-                                "meters": all_ride.distance,
-                                "formatted": f"{all_ride.distance / 1000:.1f} km"
-                                if unit == "meters"
-                                else f"{all_ride.distance * 0.000621371:.1f} mi",
-                            },
-                            "moving_time": {
-                                "seconds": all_ride.moving_time,
-                                "formatted": f"{all_ride.moving_time // 3600}h {(all_ride.moving_time % 3600) // 60}m",
-                            },
-                            "elevation_gain": {
-                                "meters": all_ride.elevation_gain,
-                                "formatted": f"{all_ride.elevation_gain:.0f} m"
-                                if unit == "meters"
-                                else f"{all_ride.elevation_gain * 3.28084:.0f} ft",
-                            },
+                    },
+                    "ride": {
+                        "count": all_ride.count,
+                        "distance": {
+                            "meters": all_ride.distance,
+                            "formatted": f"{all_ride.distance / 1000:.1f} km"
+                            if unit == "meters"
+                            else f"{all_ride.distance * 0.000621371:.1f} mi",
                         },
-                        "swim": {
-                            "count": all_swim.count,
-                            "distance": {
-                                "meters": all_swim.distance,
-                                "formatted": f"{all_swim.distance / 1000:.1f} km"
-                                if unit == "meters"
-                                else f"{all_swim.distance * 0.000621371:.1f} mi",
-                            },
-                            "moving_time": {
-                                "seconds": all_swim.moving_time,
-                                "formatted": f"{all_swim.moving_time // 3600}h {(all_swim.moving_time % 3600) // 60}m",
-                            },
+                        "moving_time": {
+                            "seconds": all_ride.moving_time,
+                            "formatted": f"{all_ride.moving_time // 3600}h {(all_ride.moving_time % 3600) // 60}m",
                         },
-                    }
+                        "elevation_gain": {
+                            "meters": all_ride.elevation_gain,
+                            "formatted": f"{all_ride.elevation_gain:.0f} m"
+                            if unit == "meters"
+                            else f"{all_ride.elevation_gain * 3.28084:.0f} ft",
+                        },
+                    },
+                    "swim": {
+                        "count": all_swim.count,
+                        "distance": {
+                            "meters": all_swim.distance,
+                            "formatted": f"{all_swim.distance / 1000:.1f} km"
+                            if unit == "meters"
+                            else f"{all_swim.distance * 0.000621371:.1f} mi",
+                        },
+                        "moving_time": {
+                            "seconds": all_swim.moving_time,
+                            "formatted": f"{all_swim.moving_time // 3600}h {(all_swim.moving_time % 3600) // 60}m",
+                        },
+                    },
+                }
 
-                data["statistics"] = statistics  # type: ignore[assignment]
-                metadata["includes"].append(f"stats:{stats_period}")
+            data["statistics"] = statistics  # type: ignore[assignment]
+            metadata["includes"].append(f"stats:{stats_period}")
 
-            # Add zones if requested
-            if include_zones:
-                zones = await client.get_athlete_zones()
+        # Add zones if requested
+        if include_zones:
+            zones = await client.get_athlete_zones()
 
-                zones_data = ResponseBuilder.format_zones(zones.model_dump())
-                data["zones"] = zones_data  # type: ignore[assignment]
-                metadata["includes"].append("zones")
+            zones_data = ResponseBuilder.format_zones(zones.model_dump())
+            data["zones"] = zones_data  # type: ignore[assignment]
+            metadata["includes"].append("zones")
 
-            return ResponseBuilder.build_response(data, metadata=metadata)
+        return ResponseBuilder.build_response(data, metadata=metadata)
 
     except StravaAPIError as e:
         error_type = "api_error"

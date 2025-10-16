@@ -7,7 +7,6 @@ from typing import Annotated, Any
 
 from fastmcp import Context
 
-from ..auth import StravaConfig
 from ..client import StravaAPIError, StravaClient
 from ..models import ActivityType, MeasurementPreference
 from ..response_builder import ResponseBuilder
@@ -85,7 +84,7 @@ async def query_activities(
         - Paginate large results: query_activities(time_range="ytd", cursor="eyJwYWdl...")
     """
     assert ctx is not None
-    config: StravaConfig = ctx.get_state("config")
+    client: StravaClient = ctx.get_state("client")
 
     # Coerce limit to int if passed as string
     if limit is not None and isinstance(limit, str):
@@ -112,20 +111,19 @@ async def query_activities(
         )
 
     try:
-        async with StravaClient(config) as client:
-            # Single activity mode
-            if activity_id is not None:
-                return await _get_single_activity(
-                    client,
-                    activity_id,
-                    include_streams,
-                    include_laps,
-                    include_zones,
-                    unit,
-                )
+        # Single activity mode
+        if activity_id is not None:
+            return await _get_single_activity(
+                client,
+                activity_id,
+                include_streams,
+                include_laps,
+                include_zones,
+                unit,
+            )
 
-            # List activities mode
-            return await _list_activities(client, time_range, activity_type, limit, cursor, unit)
+        # List activities mode
+        return await _list_activities(client, time_range, activity_type, limit, cursor, unit)
 
     except ValueError as e:
         return ResponseBuilder.build_error_response(
@@ -347,62 +345,61 @@ async def get_activity_social(
     }
     """
     assert ctx is not None
-    config: StravaConfig = ctx.get_state("config")
+    client: StravaClient = ctx.get_state("client")
 
     try:
-        async with StravaClient(config) as client:
-            # Get basic activity info
-            activity = await client.get_activity(activity_id)
+        # Get basic activity info
+        activity = await client.get_activity(activity_id)
 
-            data: dict[str, Any] = {
-                "activity": {
-                    "id": activity.id,
-                    "name": activity.name,
-                    "type": activity.type,
+        data: dict[str, Any] = {
+            "activity": {
+                "id": activity.id,
+                "name": activity.name,
+                "type": activity.type,
+            }
+        }
+
+        # Add comments if requested
+        if include_comments:
+            comments = await client.get_activity_comments(activity_id)
+            data["comments"] = [
+                {
+                    "id": comment.id,
+                    "athlete": {
+                        "id": comment.athlete.id if comment.athlete else None,
+                        "name": f"{comment.athlete.firstname} {comment.athlete.lastname}"
+                        if comment.athlete
+                        else None,
+                    },
+                    "text": comment.text,
+                    "created_at": comment.created_at,
                 }
-            }
+                for comment in comments
+            ]
 
-            # Add comments if requested
-            if include_comments:
-                comments = await client.get_activity_comments(activity_id)
-                data["comments"] = [
-                    {
-                        "id": comment.id,
-                        "athlete": {
-                            "id": comment.athlete.id if comment.athlete else None,
-                            "name": f"{comment.athlete.firstname} {comment.athlete.lastname}"
-                            if comment.athlete
-                            else None,
-                        },
-                        "text": comment.text,
-                        "created_at": comment.created_at,
-                    }
-                    for comment in comments
-                ]
+        # Add kudos if requested
+        if include_kudos:
+            kudos = await client.get_activity_kudoers(activity_id)
+            data["kudos"] = [
+                {
+                    "id": kudoer.id,
+                    "name": f"{kudoer.firstname} {kudoer.lastname}",
+                }
+                for kudoer in kudos
+            ]
 
-            # Add kudos if requested
-            if include_kudos:
-                kudos = await client.get_activity_kudoers(activity_id)
-                data["kudos"] = [
-                    {
-                        "id": kudoer.id,
-                        "name": f"{kudoer.firstname} {kudoer.lastname}",
-                    }
-                    for kudoer in kudos
-                ]
+        includes: list[str] = []
+        if include_comments:
+            includes.append(f"comments:{len(data.get('comments', []))}")
+        if include_kudos:
+            includes.append(f"kudos:{len(data.get('kudos', []))}")
 
-            includes: list[str] = []
-            if include_comments:
-                includes.append(f"comments:{len(data.get('comments', []))}")
-            if include_kudos:
-                includes.append(f"kudos:{len(data.get('kudos', []))}")
+        metadata: dict[str, Any] = {
+            "activity_id": activity_id,
+            "includes": includes,
+        }
 
-            metadata: dict[str, Any] = {
-                "activity_id": activity_id,
-                "includes": includes,
-            }
-
-            return ResponseBuilder.build_response(data, metadata=metadata)
+        return ResponseBuilder.build_response(data, metadata=metadata)
 
     except StravaAPIError as e:
         error_type = "api_error"
