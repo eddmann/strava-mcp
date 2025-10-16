@@ -7,7 +7,6 @@ from typing import Annotated, Any, Literal
 
 from fastmcp import Context
 
-from ..auth import StravaConfig
 from ..client import StravaAPIError, StravaClient
 from ..models import MeasurementPreference
 from ..response_builder import ResponseBuilder
@@ -52,7 +51,7 @@ async def query_routes(
         - Paginate results: query_routes(cursor="eyJwYWdl...")
     """
     assert ctx is not None
-    config: StravaConfig = ctx.get_state("config")
+    client: StravaClient = ctx.get_state("client")
 
     # Coerce limit to int if passed as string
     if isinstance(limit, str):
@@ -72,13 +71,12 @@ async def query_routes(
         )
 
     try:
-        async with StravaClient(config) as client:
-            # Single route mode
-            if route_id is not None:
-                return await _get_single_route(client, route_id, unit)
+        # Single route mode
+        if route_id is not None:
+            return await _get_single_route(client, route_id, unit)
 
-            # List routes mode
-            return await _list_routes(client, limit, cursor, unit)
+        # List routes mode
+        return await _list_routes(client, limit, cursor, unit)
 
     except StravaAPIError as e:
         error_type = "api_error"
@@ -263,7 +261,7 @@ async def export_route(
     Note: The content field contains the raw GPX/TCX XML data.
     """
     assert ctx is not None
-    config: StravaConfig = ctx.get_state("config")
+    client: StravaClient = ctx.get_state("client")
 
     if format not in ["gpx", "tcx"]:
         return ResponseBuilder.build_error_response(
@@ -272,26 +270,25 @@ async def export_route(
         )
 
     try:
-        async with StravaClient(config) as client:
-            if format == "gpx":
-                content = await client.export_route_gpx(route_id)
-            else:  # tcx
-                content = await client.export_route_tcx(route_id)
+        if format == "gpx":
+            content = await client.export_route_gpx(route_id)
+        else:  # tcx
+            content = await client.export_route_tcx(route_id)
 
-            data = {
-                "route_id": route_id,
-                "format": format,
-                "content": content,
-                "filename": f"route_{route_id}.{format}",
-                "size_bytes": len(content.encode("utf-8")),
-            }
+        data = {
+            "route_id": route_id,
+            "format": format,
+            "content": content,
+            "filename": f"route_{route_id}.{format}",
+            "size_bytes": len(content.encode("utf-8")),
+        }
 
-            metadata = {
-                "export_format": format,
-                "route_id": route_id,
-            }
+        metadata = {
+            "export_format": format,
+            "route_id": route_id,
+        }
 
-            return ResponseBuilder.build_response(data, metadata=metadata)
+        return ResponseBuilder.build_response(data, metadata=metadata)
 
     except StravaAPIError as e:
         error_type = "api_error"
