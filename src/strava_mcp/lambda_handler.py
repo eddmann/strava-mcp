@@ -14,7 +14,7 @@ from .server import create_server
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     mcp = create_server("http")
-    app = mcp.http_app(transport="streamable-http")
+    app = mcp.http_app(transport="streamable-http", stateless_http=True)
     mangum_handler = Mangum(app, lifespan="auto")
 
     return mangum_handler(event, context)
