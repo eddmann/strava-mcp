@@ -62,6 +62,7 @@ ignore = ["E501"]  # Line length enforced by ruff format instead
 "src/strava_mcp/server.py" = ["E402"]  # Imports must come after mode detection
 
 [tool.pyright]
+include = ["src", "tests"]
 strict = ["src"]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
@@ -69,3 +70,6 @@ reportMissingTypeStubs = false
 reportUnknownMemberType = false
 reportUnknownArgumentType = false
 reportUnknownVariableType = false
+exclude = [
+    "src/strava_mcp/lambda_handler.py",  # Lambda handler requires mangum optional dependency
+]
