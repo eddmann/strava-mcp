@@ -77,6 +77,14 @@ async def analyze_training(
             "fetched_at": "ISO timestamp"
         }
     }
+
+    Examples:
+        - Last 30 days: analyze_training()
+        - Last 7 days: analyze_training(period="7d")
+        - Year to date: analyze_training(period="ytd")
+        - Custom date range: analyze_training(period="2025-04-04:2025-05-04")
+        - Runs only in last 90 days: analyze_training(period="90d", activity_type="Run")
+        - This month's rides: analyze_training(period="this-month", activity_type="Ride")
     """
     assert ctx is not None
     client: StravaClient = ctx.get_state("client")
