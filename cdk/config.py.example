@@ -18,6 +18,8 @@ LAMBDA_ENV_OVERRIDES: Dict[str, str] = {
     "STRAVA_OAUTH_SCOPES": "profile:read_all,activity:read_all,activity:read,profile:write",
     # Optional preferences (match existing local configuration)
     "STRAVA_MEASUREMENT_PREFERENCE": "meters",
+    # NOTE: Route exports are not currently supported in Lambda deployments for remote access.
+    # This will need to be addressed in the future using object storage (S3, etc.).
     "ROUTE_EXPORT_PATH": "/tmp/strava_exports",
     # Example: use a custom base URL if fronted by a shared domain
     # "STRAVA_MCP_BASE_URL": "https://your-custom-domain.example.com",

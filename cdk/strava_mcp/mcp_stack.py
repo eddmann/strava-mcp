@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 import aws_cdk as cdk
 from aws_cdk import BundlingOptions, Duration, RemovalPolicy
