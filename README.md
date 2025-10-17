@@ -1,6 +1,6 @@
 # Strava MCP Server
 
-A Model Context Protocol (MCP) server for Strava integration. Access your activities, athlete stats, segments, and routes through Claude and other LLMs.
+A Model Context Protocol (MCP) server for Strava integration. Access your activities, athlete stats, segments, and routes through Claude, ChatGPT, and other LLMs.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
@@ -18,6 +18,11 @@ Additionally, the server provides:
 
 - 1 MCP Resource - Athlete profile with stats and zones for ongoing context
 - 5 MCP Prompts - Templates for common queries (training analysis, segment performance, activity analysis, run comparison, training summary)
+
+**Deployment Options:**
+
+- **Stdio Mode**: Single-user local deployment (e.g., Claude Desktop, Cursor)
+- **HTTP Mode**: Multi-user deployment (e.g., ChatGPT, remote MCP deployment)
 
 ## Prerequisites
 
@@ -42,10 +47,19 @@ Before installation, you need to create a Strava API application:
 
 ### How Authentication Works
 
-1. OAuth Flow - Authorize the app through your browser
+#### Stdio Mode (single-user, pre-configured)
+
+1. OAuth Flow - One-time authorization through browser
 2. Token Storage - OAuth tokens saved to `.env` file
 3. Auto-Refresh - Tokens automatically refreshed when expired
 4. Persistence - Subsequent runs reuse stored tokens
+
+#### HTTP Mode (multi-user, on-demand)
+
+1. OAuth Flow - Per-user authorization on first connection (MCP OAuth → Strava OAuth)
+2. Token Storage - OAuth tokens stored in session store (in-memory or DynamoDB)
+3. Auto-Refresh - Tokens refreshed automatically per-session
+4. Persistence - Sessions expire after 12 hours (configurable)
 
 ### Option 1: Using UV
 
@@ -55,26 +69,13 @@ cd strava-mcp
 uv sync
 ```
 
-Then configure credentials using one of these methods:
-
-#### Interactive Setup
+Then configure credentials:
 
 ```bash
 uv run strava-mcp-auth
 ```
 
-This will display an authorization URL to visit in your browser and save credentials to `.env`.
-
-#### Manual Setup
-
-Create a `.env` file manually:
-
-```bash
-STRAVA_CLIENT_ID=your_client_id
-STRAVA_CLIENT_SECRET=your_client_secret
-STRAVA_ACCESS_TOKEN=your_access_token
-STRAVA_REFRESH_TOKEN=your_refresh_token
-```
+This interactive wizard will guide you through configuring authentication for stdio or http transport modes.
 
 ### Option 2: Using Docker
 
@@ -83,9 +84,7 @@ STRAVA_REFRESH_TOKEN=your_refresh_token
 docker pull ghcr.io/eddmann/strava-mcp:latest
 ```
 
-Then configure credentials using one of these methods:
-
-#### Interactive Setup
+Then configure credentials:
 
 ```bash
 # Create the env file first (Docker will create it as a directory if it doesn't exist)
@@ -99,11 +98,7 @@ docker run -it --rm \
   python -m strava_mcp.scripts.setup_auth
 ```
 
-This will display an authorization URL to visit in your browser and save credentials to `strava-mcp.env`.
-
-#### Manual Setup
-
-Create a `strava-mcp.env` file manually in your current directory (see UV manual setup above for format).
+This interactive wizard will guide you through configuring authentication for stdio or http transport modes.
 
 ### Required OAuth Scopes
 
@@ -113,6 +108,28 @@ The authentication process requests these scopes:
 - `activity:read_all` - Read all activity data
 - `activity:read` - Read activity summaries
 - `profile:write` - Star/unstar segments
+
+## Transport Modes
+
+The server supports two transport modes selected via `--transport` flag (stdio is default, no flag needed):
+
+### Stdio Mode (Default)
+
+Uses standard input/output for communication with a single pre-configured Strava account.
+
+- Authentication: Pre-configured OAuth tokens in `.env` file
+- Users: Single user per deployment
+- Setup: Run `strava-mcp-auth` to authorize once
+- Token Storage: Local `.env` file
+
+### HTTP Mode (Streamable HTTP)
+
+Uses HTTP transport with per-user OAuth flow.
+
+- Authentication: OAuth flow per user (MCP OAuth → Strava OAuth)
+- Users: Multi-user support with separate sessions
+- Setup: Environment-based configuration
+- Token Storage: In-memory or DynamoDB session store
 
 ## Claude Desktop Configuration
 
@@ -132,7 +149,9 @@ Add to your configuration file:
         "run",
         "--directory",
         "/ABSOLUTE/PATH/TO/strava-mcp",
-        "strava-mcp"
+        "strava-mcp",
+        "--transport",
+        "stdio"
       ]
     }
   }
@@ -152,12 +171,64 @@ Add to your configuration file:
         "--rm",
         "-v",
         "/ABSOLUTE/PATH/TO/strava-mcp.env:/app/.env",
-        "ghcr.io/eddmann/strava-mcp:latest"
+        "ghcr.io/eddmann/strava-mcp:latest",
+        "--transport",
+        "stdio"
       ]
     }
   }
 }
 ```
+
+## ChatGPT Integration & HTTP Mode
+
+### Running in HTTP Mode
+
+Start the server in HTTP mode for deploying remote:
+
+```bash
+# Using UV
+uv run strava-mcp --transport http
+
+# Using Docker
+docker run -p 8000:8000 \
+  ghcr.io/eddmann/strava-mcp:latest \
+  uv run strava-mcp --transport http
+```
+
+Environment variables can be configured using the `strava-mcp-auth` setup wizard (see Installation & Setup above).
+
+### Local Development with ngrok
+
+To test ChatGPT integration locally:
+
+1. **Start the server in HTTP mode**:
+
+   ```bash
+   uv run strava-mcp --transport http
+   ```
+
+2. **In a separate terminal, expose via ngrok**:
+
+   ```bash
+   ngrok http 8000
+   ```
+
+3. **Update environment**: Set `STRAVA_MCP_BASE_URL` to your ngrok URL:
+
+   ```bash
+   export STRAVA_MCP_BASE_URL=https://abc123.ngrok.io
+   ```
+
+   Or add to your `.env` file:
+
+   ```
+   STRAVA_MCP_BASE_URL=https://abc123.ngrok.io
+   ```
+
+4. **Restart the server** to pick up the new base URL
+
+5. **Configure ChatGPT**: Use the ngrok URL (with `/mcp` path) as your MCP server endpoint
 
 ## Usage
 

@@ -11,9 +11,9 @@ from httpx import Response
 @pytest.fixture
 def mock_config():
     """Provide a mock Strava configuration for testing."""
-    from strava_mcp.auth import StravaConfig
+    from strava_mcp.stdio_auth import StdioStravaAuthContext
 
-    return StravaConfig(
+    return StdioStravaAuthContext(
         strava_client_id="test_client_id",
         strava_client_secret="test_client_secret",
         strava_access_token="test_access_token",
@@ -46,6 +46,14 @@ def mock_env_config(mock_config):
 
     with patch.dict(os.environ, env_vars, clear=False):
         yield
+
+
+@pytest.fixture
+def mcp():
+    """Provide an MCP server instance for testing."""
+    from strava_mcp.server import create_server
+
+    return create_server("stdio")
 
 
 @pytest.fixture

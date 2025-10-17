@@ -5,7 +5,6 @@ import json
 import pytest
 from fastmcp import Client
 
-from strava_mcp.server import mcp
 from tests.fixtures.activity_fixtures import DETAILED_ACTIVITY, SUMMARY_ACTIVITY
 from tests.helpers import get_text_content
 from tests.stubs.strava_api_stub import StravaAPIStubber
@@ -20,7 +19,7 @@ def stub_api(respx_mock):
 class TestAnalyzeTraining:
     """Test analyze_training tool."""
 
-    async def test_analyze_training_success(self, stub_api, respx_mock):
+    async def test_analyze_training_success(self, stub_api, respx_mock, mcp):
         """Test successful training analysis."""
         from httpx import Response
 
@@ -81,7 +80,7 @@ class TestAnalyzeTraining:
         assert "metadata" in data
         assert "period" in data["metadata"]
 
-    async def test_analyze_training_empty(self, stub_api, respx_mock):
+    async def test_analyze_training_empty(self, stub_api, respx_mock, mcp):
         """Test training analysis with no activities."""
         from httpx import Response
 
@@ -96,7 +95,7 @@ class TestAnalyzeTraining:
         assert data["data"]["summary"]["total_activities"] == 0
         assert "message" in data["data"]
 
-    async def test_analyze_training_with_type_filter(self, stub_api, respx_mock):
+    async def test_analyze_training_with_type_filter(self, stub_api, respx_mock, mcp):
         """Test training analysis filtered by activity type."""
         from httpx import Response
 
@@ -126,7 +125,7 @@ class TestAnalyzeTraining:
 class TestCompareActivities:
     """Test compare_activities tool."""
 
-    async def test_compare_activities_success(self, stub_api):
+    async def test_compare_activities_success(self, stub_api, mcp):
         """Test successful activity comparison."""
         # Stub two activities
         activity1 = {**DETAILED_ACTIVITY, "id": 1}
@@ -165,7 +164,7 @@ class TestCompareActivities:
         assert "analysis" in data
         assert "insights" in data["analysis"]
 
-    async def test_compare_activities_too_few(self):
+    async def test_compare_activities_too_few(self, mcp):
         """Test comparison with too few activities."""
         async with Client(mcp) as client:
             result = await client.call_tool("compare_activities", {"activity_ids": "1"})
@@ -177,7 +176,7 @@ class TestCompareActivities:
         assert "validation_error" in data["error"]["type"]
         assert "at least 2" in data["error"]["message"]
 
-    async def test_compare_activities_too_many(self):
+    async def test_compare_activities_too_many(self, mcp):
         """Test comparison with too many activities."""
         async with Client(mcp) as client:
             result = await client.call_tool("compare_activities", {"activity_ids": "1,2,3,4,5,6"})
@@ -193,7 +192,7 @@ class TestCompareActivities:
 class TestFindSimilarActivities:
     """Test find_similar_activities tool."""
 
-    async def test_find_similar_activities_success(self, stub_api, respx_mock):
+    async def test_find_similar_activities_success(self, stub_api, respx_mock, mcp):
         """Test finding similar activities."""
         from httpx import Response
 
@@ -245,7 +244,7 @@ class TestFindSimilarActivities:
         assert "type" in data["metadata"]["criteria"]
         assert "distance" in data["metadata"]["criteria"]
 
-    async def test_find_similar_activities_invalid_criteria(self):
+    async def test_find_similar_activities_invalid_criteria(self, mcp):
         """Test with invalid similarity criteria."""
         async with Client(mcp) as client:
             result = await client.call_tool(
@@ -259,7 +258,7 @@ class TestFindSimilarActivities:
         assert "validation_error" in data["error"]["type"]
         assert "Invalid criteria" in data["error"]["message"]
 
-    async def test_find_similar_activities_not_found(self, stub_api):
+    async def test_find_similar_activities_not_found(self, stub_api, mcp):
         """Test with non-existent reference activity."""
         stub_api.stub_error_response("/activities/999999", status_code=404)
 

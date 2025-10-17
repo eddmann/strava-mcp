@@ -1,0 +1,10 @@
+[project]
+name = "strava-mcp-cdk"
+version = "1.0.0"
+description = "Infrastructure as code for deploying the Strava MCP server with AWS CDK."
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "aws-cdk-lib>=2.131.0,<3.0.0",
+    "constructs>=10.3.0,<11.0.0",
+]

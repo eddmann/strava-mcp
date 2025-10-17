@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Model Context Protocol (MCP) server that enables LLMs to interact with the Strava API. Built with Python 3.11+ using FastMCP framework. Provides 11 tools organized into 5 categories (Activities, Athlete, Segments, Routes, Analysis), plus 1 MCP resource and 5 MCP prompts.
 
+**Dual-Mode Support**: The server supports both stdio (Claude Desktop) and HTTP (ChatGPT, Lambda) transports with unified client implementation.
+
 ## Development Commands
 
 ### Setup and Installation
@@ -13,11 +15,14 @@ A Model Context Protocol (MCP) server that enables LLMs to interact with the Str
 # Install dependencies
 uv sync
 
-# Run authentication setup (interactive OAuth flow)
+# Stdio mode: Run authentication setup (interactive OAuth flow)
 uv run strava-mcp-auth
 
-# Run the MCP server (typically called by Claude Desktop)
+# Run the MCP server in stdio mode (default, for Claude Desktop)
 uv run strava-mcp
+
+# Run the MCP server in HTTP mode (for ChatGPT, Lambda)
+uv run strava-mcp --transport http
 ```
 
 ### Testing
@@ -52,24 +57,49 @@ uv run pyright
 ### Core Components
 
 **server.py** - MCP server entry point
-- Initializes FastMCP instance
-- Registers all tools, resources, and prompts
+- `create_server(transport_mode)` function creates and configures FastMCP instance for stdio or HTTP mode
+- Conditionally imports and configures mode-specific middleware and auth providers
+- Registers all tools, resources, and prompts (transport-agnostic)
 - Tools are registered by importing functions from `tools/` modules and wrapping them with `@mcp.tool()` decorator
 - MCP resources defined with `@mcp.resource()` decorator (provides ongoing context without explicit tool calls)
 - MCP prompts defined with `@mcp.prompt()` decorator (templates for common queries)
+- `main()` function parses CLI arguments and runs server with selected transport
 
-**client.py** - Strava API client
+**client.py** - Strava API client (transport-agnostic)
+- Defines `StravaAuthContext` protocol that both stdio and HTTP authentication contexts implement
 - Async HTTP client using `httpx`
-- Automatic OAuth token refresh on 401 (handled transparently)
+- Accepts `StravaAuthContext` protocol - works with both stdio and HTTP modes
+- Automatic OAuth token refresh on 401 (mode-specific: `.env` for stdio, session store for HTTP)
 - Comprehensive error handling with custom `StravaAPIError` exception
 - Methods organized by API category: activities, athlete, segments, routes
 - All API responses validated using Pydantic models
 
-**auth.py** - OAuth authentication
-- Configuration loaded from `.env` file via `pydantic-settings`
-- Token refresh flow handled automatically by client
-- Tokens persisted back to `.env` after refresh
-- Interactive setup script in `scripts/setup_auth.py`
+**stdio_middleware.py** - Stdio mode request middleware
+- **StdioClientMiddleware**: Loads config from `.env`, creates and injects `StravaClient` per request
+- Injects client via `ctx.get_state("client")` for tools to access
+
+**http_middleware.py** - HTTP mode request middleware
+- **HttpClientMiddleware**: Resolves OAuth session, creates `HttpStravaAuthContext`, proactively refreshes tokens, injects `StravaClient`
+- Extracts OAuth token from MCP request and resolves user session
+- Injects client via `ctx.get_state("client")` for tools to access
+
+**stdio_auth.py** - Stdio mode authentication
+- `StdioStravaAuthContext` implements `StravaAuthContext` protocol for stdio mode
+- Loads tokens from `.env` file via Pydantic settings
+- Token refresh persists back to `.env` file
+- Interactive setup script in `scripts/setup_auth.py` for initial OAuth flow (supports both stdio and HTTP mode)
+
+**http_auth.py** - HTTP mode OAuth provider
+- `StravaOAuthProvider` implements FastMCP OAuth provider interface
+- Handles MCP OAuth authorization/token endpoints
+- Bridges ChatGPT OAuth flow with Strava OAuth flow
+- Manages authorization codes, access tokens, refresh tokens via `SessionStore`
+
+**http_session.py** - HTTP mode authentication and session management
+- `HttpStravaAuthContext` implements `StravaAuthContext` protocol for HTTP mode
+- `StravaOAuthService` handles two-hop OAuth flow (MCP → Strava)
+- `SessionStore` manages per-user sessions (in-memory or DynamoDB)
+- Tokens stored in session store, refreshed on demand
 
 **models.py** - Pydantic models
 - Complete type definitions for all Strava API responses
@@ -96,6 +126,11 @@ uv run pyright
 - Parses time range strings like "7d", "30d", "ytd", "YYYY-MM-DD:YYYY-MM-DD"
 - Used by tools that filter activities by date range
 
+**lambda_handler.py** - AWS Lambda deployment
+- Wraps FastMCP ASGI app with Mangum for Lambda compatibility
+- Creates server in HTTP mode with streamable-http transport
+- Entry point: `handler(event, context)` function
+
 ### Tool Organization
 
 Tools are organized into 5 modules under `src/strava_mcp/tools/`:
@@ -108,8 +143,8 @@ Tools are organized into 5 modules under `src/strava_mcp/tools/`:
 
 All tools follow a consistent pattern:
 - Accept parameters with `Annotated[type, "description"]` for MCP schema generation
-- Validate credentials using `validate_credentials(config)`
-- Use async context manager for client: `async with StravaClient(config) as client:`
+- Accept `ctx: Context` parameter to access injected `StravaClient` via `ctx.get_state("client")`
+- Client is injected by middleware (stdio or HTTP mode) before tool execution
 - Return JSON string via `ResponseBuilder.build_response()` or `ResponseBuilder.build_error_response()`
 - Handle `StravaAPIError` exceptions with appropriate error messages
 - List-returning tools support cursor-based pagination with `cursor` and `limit` parameters
@@ -126,18 +161,34 @@ When adding tests:
 - Mock HTTP responses with `respx` in `tests/stubs/strava_api_stub.py`
 - Follow naming convention: `test_<function_name>_<scenario>`
 
-### OAuth Flow
+### OAuth Flow (Stdio Mode)
 
 1. User runs `uv run strava-mcp-auth`
-2. Script opens browser to Strava authorization URL
-3. User authorizes app, redirected to localhost callback
-4. Script exchanges authorization code for tokens
-5. Tokens saved to `.env` file
-6. Server loads tokens on startup via `load_config()`
-7. Client automatically refreshes tokens when expired (401 response)
-8. Refreshed tokens persisted back to `.env` via `update_env_tokens()`
+2. Interactive wizard prompts for transport mode (stdio or http)
+3. For stdio mode: Script opens browser to Strava authorization URL
+4. User authorizes app, redirected to localhost callback
+5. Script exchanges authorization code for tokens
+6. Tokens saved to `.env` file (STRAVA_ACCESS_TOKEN, STRAVA_REFRESH_TOKEN)
+7. Server loads tokens on startup via `StdioStravaAuthContext()`
+8. Client automatically refreshes tokens when expired (401 response)
+9. Refreshed tokens persisted back to `.env` file automatically
+
+### OAuth Flow (HTTP Mode)
+
+1. User connects to MCP server from ChatGPT or other MCP client
+2. MCP client initiates OAuth flow via `StravaOAuthProvider`
+3. User is redirected to Strava authorization URL
+4. After authorization, tokens are stored in `SessionStore` (in-memory or DynamoDB)
+5. Each subsequent request includes MCP OAuth token
+6. `HttpClientMiddleware` resolves session and creates `HttpStravaAuthContext`
+7. Client automatically refreshes Strava tokens when expired
+8. Refreshed tokens saved back to session store
 
 ### Key Design Patterns
+
+**Protocol-based auth context** - `StravaAuthContext` protocol enables unified `StravaClient` implementation for both stdio and HTTP modes
+
+**Middleware injection** - Mode-specific middlewares inject `StravaClient` into context state before tool execution
 
 **Unified query tools** - Single tool handles multiple query patterns (e.g., `query_activities` can get single activity by ID or list activities with filters)
 
@@ -196,15 +247,54 @@ if data1["pagination"]["has_more"]:
 - Tools fetch `limit+1` items to detect if more pages exist
 - Analysis tools (`analyze_training`, `find_similar_activities`) have reduced internal limits (200-300 max activities)
 
+## Transport Modes
+
+The server supports two transport modes selected via CLI argument (`--transport {stdio,http}`):
+
+### Stdio Mode (Default)
+- **Use case**: Claude Desktop, local development
+- **Authentication**: Pre-configured tokens in `.env` file (via `strava-mcp-auth` script)
+- **Single-user**: One set of credentials per deployment
+- **Token storage**: `.env` file (automatically updated on refresh)
+- **Setup**: Run `uv run strava-mcp-auth` to generate initial tokens
+
+### HTTP Mode
+- **Use case**: ChatGPT integration, AWS Lambda, multi-user deployments
+- **Authentication**: OAuth flow per-user (MCP OAuth → Strava OAuth)
+- **Multi-user**: Each user gets their own session with separate Strava tokens
+- **Token storage**: `SessionStore` (in-memory or DynamoDB)
+- **Setup**: Configure OAuth clients in `.env` (e.g., `MCP_OAUTH_CLIENTS`)
+- **Entry points**:
+  - `uv run strava-mcp --transport http` - CLI with HTTP mode (uses streamable-http transport)
+  - `strava_mcp.lambda_handler:handler` - AWS Lambda handler (via Mangum, wraps FastMCP ASGI app)
+
+### Key Differences
+
+| Feature | Stdio Mode | HTTP Mode |
+|---------|-----------|-----------|
+| **Transport** | stdio (stdin/stdout) | HTTP (SSE or streamable-http) |
+| **Users** | Single user | Multi-user |
+| **Auth Flow** | Manual token setup | OAuth flow per user |
+| **Token Storage** | `.env` file | SessionStore (memory/DynamoDB) |
+| **Session Management** | None (static config) | TTL-based sessions (12h default) |
+| **Deployment** | Claude Desktop | ChatGPT, Lambda, containers |
+
 ## Configuration Files
 
-**.env** - OAuth tokens and settings (created by `strava-mcp-auth`, automatically updated when tokens refresh)
+**.env** - Mode-specific configuration
+- **Common**: `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`
+- **Stdio only**: `STRAVA_ACCESS_TOKEN`, `STRAVA_REFRESH_TOKEN`
+- **HTTP only**: `STRAVA_MCP_HOST`, `STRAVA_MCP_PORT`, `STRAVA_MCP_BASE_URL`, `MCP_OAUTH_CLIENTS`
+
+**Note**: Transport mode is selected via CLI argument, not environment variable.
+
 **pyproject.toml** - Project dependencies, scripts, tool configuration (pytest, ruff, pyright)
+
 **.claude/commands/commit.md** - Custom slash command for creating conventional commits
 
 ## MCP Integration
 
-Claude Desktop configuration typically uses:
+### Stdio Mode (Claude Desktop)
 ```json
 {
   "mcpServers": {
@@ -216,4 +306,10 @@ Claude Desktop configuration typically uses:
 }
 ```
 
-The server communicates via stdio (standard MCP transport). All tools, resources, and prompts are automatically discoverable by the MCP client.
+### HTTP Mode (ChatGPT)
+1. Deploy server to Lambda (via `lambda_handler.py`) or run locally with `--transport http`
+2. Configure `STRAVA_MCP_BASE_URL` to your public endpoint
+3. Register ChatGPT client in `MCP_OAUTH_CLIENTS` (auto-included by default)
+4. ChatGPT will initiate OAuth flow on first connection
+
+All tools, resources, and prompts are automatically discoverable by the MCP client in both modes.

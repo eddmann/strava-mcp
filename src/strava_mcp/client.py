@@ -2,12 +2,11 @@
 
 import types
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal, Protocol
 
 import httpx
 from pydantic import TypeAdapter
 
-from .auth import StravaConfig, refresh_access_token, update_env_tokens
 from .models import (
     ActivityZone,
     Athlete,
@@ -26,6 +25,48 @@ from .models import (
 )
 
 
+class StravaAuthContext(Protocol):
+    """Common interface for accessing Strava credentials and refreshing tokens.
+
+    This protocol defines the minimum interface required for authentication:
+    - Access to current credentials (tokens, client ID/secret, preferences)
+    - Ability to refresh tokens using mode-specific strategy
+    """
+
+    @property
+    def strava_access_token(self) -> str:
+        """Current Strava API access token."""
+        ...
+
+    @property
+    def strava_client_id(self) -> str:
+        """Strava OAuth application client ID."""
+        ...
+
+    @property
+    def strava_client_secret(self) -> str:
+        """Strava OAuth application client secret."""
+        ...
+
+    @property
+    def strava_measurement_preference(self) -> Literal["meters", "feet"]:
+        """User preference for distance/elevation units."""
+        ...
+
+    @property
+    def route_export_path(self) -> str:
+        """Directory path for exporting route files."""
+        ...
+
+    async def refresh_tokens(self) -> None:
+        """Refresh Strava access token using mode-specific refresh strategy.
+
+        Stdio mode: Calls Strava API, updates .env file
+        HTTP mode: Calls OAuth service, updates session store
+        """
+        ...
+
+
 class StravaAPIError(Exception):
     """Custom exception for Strava API errors."""
 
@@ -40,9 +81,9 @@ class StravaClient:
 
     BASE_URL = "https://www.strava.com/api/v3"
 
-    def __init__(self, config: StravaConfig):
+    def __init__(self, context: StravaAuthContext):
         """Initialize the Strava API client."""
-        self.config = config
+        self.context = context
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> "StravaClient":
@@ -65,7 +106,7 @@ class StravaClient:
 
     def _get_headers(self) -> dict[str, str]:
         """Get authorization headers for API requests."""
-        return {"Authorization": f"Bearer {self.config.strava_access_token}"}
+        return {"Authorization": f"Bearer {self.context.strava_access_token}"}
 
     async def _request(
         self,
@@ -95,15 +136,10 @@ class StravaClient:
 
             # Handle 401 - token expired
             if response.status_code == 401:
-                # Refresh token
-                new_access, new_refresh = await refresh_access_token(self.config)
-                update_env_tokens(new_access, new_refresh)
+                # Refresh tokens (mode-specific logic handled by context)
+                await self.context.refresh_tokens()
 
-                # Update config with new tokens
-                self.config.strava_access_token = new_access
-                self.config.strava_refresh_token = new_refresh
-
-                # Retry request with new token
+                # Retry request with refreshed token
                 headers = self._get_headers()
                 response = await self._client.request(
                     method,

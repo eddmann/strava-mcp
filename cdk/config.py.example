@@ -1,0 +1,24 @@
+"""Example secret configuration for the Strava MCP CDK deployment.
+
+Copy this file to ``config.py`` (which is ignored by git) and replace the placeholder
+values with your real Strava credentials and any additional environment overrides.
+"""
+
+from __future__ import annotations
+
+from typing import Dict
+
+# Values defined here will be merged into the Lambda function's environment.
+# Add any other key/value pairs your deployment requires.
+LAMBDA_ENV_OVERRIDES: Dict[str, str] = {
+    # Core Strava OAuth configuration
+    "STRAVA_CLIENT_ID": "your-strava-client-id",
+    "STRAVA_CLIENT_SECRET": "your-strava-client-secret",
+    # Comma-separated list of scopes the MCP should request
+    "STRAVA_OAUTH_SCOPES": "profile:read_all,activity:read_all,activity:read,profile:write",
+    # Optional preferences (match existing local configuration)
+    "STRAVA_MEASUREMENT_PREFERENCE": "meters",
+    "ROUTE_EXPORT_PATH": "/tmp/strava_exports",
+    # Example: use a custom base URL if fronted by a shared domain
+    # "STRAVA_MCP_BASE_URL": "https://your-custom-domain.example.com",
+}

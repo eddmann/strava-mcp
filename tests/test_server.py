@@ -5,7 +5,6 @@ import json
 import pytest
 from fastmcp import Client
 
-from strava_mcp.server import mcp
 from tests.fixtures.athlete_fixtures import ATHLETE_STATS, ATHLETE_ZONES, DETAILED_ATHLETE
 from tests.helpers import get_prompt_text, get_resource_text
 from tests.stubs.strava_api_stub import StravaAPIStubber
@@ -20,7 +19,7 @@ def stub_api(respx_mock):
 class TestMCPResources:
     """Test MCP resources."""
 
-    async def test_athlete_profile_resource(self, stub_api):
+    async def test_athlete_profile_resource(self, stub_api, mcp):
         """Test athlete profile resource."""
         athlete_id = DETAILED_ATHLETE["id"]
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
@@ -61,7 +60,7 @@ class TestMCPResources:
 class TestMCPPrompts:
     """Test MCP prompts."""
 
-    async def test_analyze_recent_training_prompt(self):
+    async def test_analyze_recent_training_prompt(self, mcp):
         """Test analyze_recent_training prompt."""
         async with Client(mcp) as client:
             result = await client.get_prompt("analyze_recent_training", {"period": "30d"})
@@ -75,7 +74,7 @@ class TestMCPPrompts:
         assert "volume" in prompt_text.lower()
         assert "distribution" in prompt_text.lower()
 
-    async def test_analyze_recent_training_prompt_default(self):
+    async def test_analyze_recent_training_prompt_default(self, mcp):
         """Test analyze_recent_training prompt with default period."""
         async with Client(mcp) as client:
             result = await client.get_prompt("analyze_recent_training", {})
@@ -86,7 +85,7 @@ class TestMCPPrompts:
 
         assert "30d" in prompt_text
 
-    async def test_segment_performance_prompt(self):
+    async def test_segment_performance_prompt(self, mcp):
         """Test segment_performance prompt."""
         segment_id = 12345
 
@@ -101,7 +100,7 @@ class TestMCPPrompts:
         assert "get_segment_leaderboard" in prompt_text
         assert "performance" in prompt_text.lower()
 
-    async def test_activity_deep_dive_prompt(self):
+    async def test_activity_deep_dive_prompt(self, mcp):
         """Test activity_deep_dive prompt."""
         activity_id = 98765
 
@@ -117,7 +116,7 @@ class TestMCPPrompts:
         assert "include_zones" in prompt_text
         assert "find_similar_activities" in prompt_text
 
-    async def test_compare_recent_runs_prompt(self):
+    async def test_compare_recent_runs_prompt(self, mcp):
         """Test compare_recent_runs prompt."""
         async with Client(mcp) as client:
             result = await client.get_prompt("compare_recent_runs", {})
@@ -130,7 +129,7 @@ class TestMCPPrompts:
         assert "Run" in prompt_text
         assert "improvements" in prompt_text.lower()
 
-    async def test_training_summary_prompt(self):
+    async def test_training_summary_prompt(self, mcp):
         """Test training_summary prompt."""
         async with Client(mcp) as client:
             result = await client.get_prompt("training_summary", {})

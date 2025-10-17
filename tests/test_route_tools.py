@@ -5,7 +5,6 @@ import json
 import pytest
 from fastmcp import Client
 
-from strava_mcp.server import mcp
 from tests.fixtures.athlete_fixtures import DETAILED_ATHLETE
 from tests.fixtures.route_fixtures import GPX_DATA, ROUTE, ROUTE_LIST, TCX_DATA
 from tests.helpers import get_text_content
@@ -21,7 +20,7 @@ def stub_api(respx_mock):
 class TestQueryRoutes:
     """Test query_routes tool."""
 
-    async def test_query_routes_single_route(self, stub_api):
+    async def test_query_routes_single_route(self, stub_api, mcp):
         """Test querying single route by ID."""
         route_id = 987654
         stub_api.stub_route_details_endpoint(route_id, ROUTE)
@@ -54,7 +53,7 @@ class TestQueryRoutes:
         assert data["metadata"]["query_type"] == "single_route"
         assert data["metadata"]["route_id"] == route_id
 
-    async def test_query_routes_with_segments(self, stub_api):
+    async def test_query_routes_with_segments(self, stub_api, mcp):
         """Test querying route with segments."""
         route_id = 987654
         route_with_segments = {
@@ -113,7 +112,7 @@ class TestQueryRoutes:
         assert "percent" in segment["avg_grade"]
         assert "formatted" in segment["avg_grade"]
 
-    async def test_query_routes_list(self, stub_api):
+    async def test_query_routes_list(self, stub_api, mcp):
         """Test listing all routes."""
         athlete_id = DETAILED_ATHLETE["id"]
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
@@ -145,7 +144,7 @@ class TestQueryRoutes:
         # Check metadata
         assert data["metadata"]["query_type"] == "list_routes"
 
-    async def test_query_routes_default_list(self, stub_api):
+    async def test_query_routes_default_list(self, stub_api, mcp):
         """Test that default query lists routes."""
         athlete_id = DETAILED_ATHLETE["id"]
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
@@ -160,7 +159,7 @@ class TestQueryRoutes:
         assert data["metadata"]["query_type"] == "list_routes"
         assert "routes" in data["data"]
 
-    async def test_query_routes_with_limit(self, stub_api):
+    async def test_query_routes_with_limit(self, stub_api, mcp):
         """Test querying routes with custom limit."""
         athlete_id = DETAILED_ATHLETE["id"]
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
@@ -176,7 +175,7 @@ class TestQueryRoutes:
         # Should return max 10 routes
         assert len(data["data"]["routes"]) <= 10
 
-    async def test_query_routes_with_feet_units(self, stub_api):
+    async def test_query_routes_with_feet_units(self, stub_api, mcp):
         """Test querying routes with feet/miles units."""
         route_id = 987654
         stub_api.stub_route_details_endpoint(route_id, ROUTE)
@@ -191,7 +190,7 @@ class TestQueryRoutes:
         assert "mi" in data["data"]["route"]["distance"]["formatted"]
         assert "ft" in data["data"]["route"]["elevation_gain"]["formatted"]
 
-    async def test_query_routes_empty_list(self, stub_api):
+    async def test_query_routes_empty_list(self, stub_api, mcp):
         """Test querying routes with no results."""
         athlete_id = DETAILED_ATHLETE["id"]
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
@@ -206,7 +205,7 @@ class TestQueryRoutes:
         assert data["data"]["count"] == 0
         assert data["data"]["routes"] == []
 
-    async def test_query_routes_not_found(self, stub_api):
+    async def test_query_routes_not_found(self, stub_api, mcp):
         """Test querying non-existent route."""
         stub_api.stub_error_response("/routes/999999", status_code=404)
 
@@ -220,7 +219,7 @@ class TestQueryRoutes:
         assert "not_found" in data["error"]["type"]
         assert "suggestions" in data["error"]
 
-    async def test_query_routes_rate_limit(self, stub_api):
+    async def test_query_routes_rate_limit(self, stub_api, mcp):
         """Test querying routes with rate limit error."""
         stub_api.stub_error_response("/routes/987654", status_code=429)
 
@@ -237,7 +236,7 @@ class TestQueryRoutes:
 class TestExportRoute:
     """Test export_route tool."""
 
-    async def test_export_route_gpx(self, stub_api):
+    async def test_export_route_gpx(self, stub_api, mcp):
         """Test successful GPX export."""
         route_id = 987654
         stub_api.stub_route_export_gpx_endpoint(route_id, GPX_DATA)
@@ -260,7 +259,7 @@ class TestExportRoute:
         assert data["metadata"]["export_format"] == "gpx"
         assert data["metadata"]["route_id"] == route_id
 
-    async def test_export_route_tcx(self, stub_api):
+    async def test_export_route_tcx(self, stub_api, mcp):
         """Test successful TCX export."""
         route_id = 987654
         stub_api.stub_route_export_tcx_endpoint(route_id, TCX_DATA)
@@ -280,7 +279,7 @@ class TestExportRoute:
         # Check metadata
         assert data["metadata"]["export_format"] == "tcx"
 
-    async def test_export_route_default_gpx(self, stub_api):
+    async def test_export_route_default_gpx(self, stub_api, mcp):
         """Test that default format is GPX."""
         route_id = 987654
         stub_api.stub_route_export_gpx_endpoint(route_id, GPX_DATA)
@@ -293,7 +292,7 @@ class TestExportRoute:
 
         assert data["data"]["format"] == "gpx"
 
-    async def test_export_route_invalid_format(self):
+    async def test_export_route_invalid_format(self, mcp):
         """Test export with invalid format."""
         from fastmcp.exceptions import ToolError
 
@@ -306,7 +305,7 @@ class TestExportRoute:
             assert "validation error" in str(exc_info.value).lower()
             assert "invalid" in str(exc_info.value)
 
-    async def test_export_route_not_found(self, stub_api):
+    async def test_export_route_not_found(self, stub_api, mcp):
         """Test exporting non-existent route."""
         stub_api.stub_error_response("/routes/999999/export_gpx", status_code=404)
 
@@ -320,7 +319,7 @@ class TestExportRoute:
         assert "not_found" in data["error"]["type"]
         assert "suggestions" in data["error"]
 
-    async def test_export_route_rate_limit(self, stub_api):
+    async def test_export_route_rate_limit(self, stub_api, mcp):
         """Test exporting route with rate limit error."""
         stub_api.stub_error_response("/routes/987654/export_gpx", status_code=429)
 
@@ -333,7 +332,7 @@ class TestExportRoute:
         assert "error" in data
         assert "rate_limit" in data["error"]["type"]
 
-    async def test_export_route_size_bytes(self, stub_api):
+    async def test_export_route_size_bytes(self, stub_api, mcp):
         """Test that size_bytes is calculated correctly."""
         route_id = 987654
         stub_api.stub_route_export_gpx_endpoint(route_id, GPX_DATA)
@@ -351,7 +350,7 @@ class TestExportRoute:
 class TestRoutePagination:
     """Test pagination behavior for route tools."""
 
-    async def test_query_routes_pagination_has_more(self, stub_api, respx_mock):
+    async def test_query_routes_pagination_has_more(self, stub_api, respx_mock, mcp):
         """Test routes pagination with more pages available."""
         from httpx import Response
 
@@ -379,7 +378,7 @@ class TestRoutePagination:
         assert data["pagination"]["limit"] == 10
         assert len(data["data"]["routes"]) == 10
 
-    async def test_query_routes_pagination_last_page(self, stub_api, respx_mock):
+    async def test_query_routes_pagination_last_page(self, stub_api, respx_mock, mcp):
         """Test routes pagination on last page."""
         from httpx import Response
 
@@ -406,7 +405,7 @@ class TestRoutePagination:
         assert data["pagination"]["cursor"] is None
         assert data["pagination"]["returned"] == 5
 
-    async def test_query_routes_pagination_with_cursor(self, stub_api, respx_mock):
+    async def test_query_routes_pagination_with_cursor(self, stub_api, respx_mock, mcp):
         """Test routes pagination using cursor."""
         from httpx import Response
 
@@ -441,7 +440,7 @@ class TestRoutePagination:
         assert data["pagination"]["returned"] == 8
         assert data["pagination"]["has_more"] is False
 
-    async def test_query_routes_limit_validation(self):
+    async def test_query_routes_limit_validation(self, mcp):
         """Test route limit validation."""
         # Test limit too high
         async with Client(mcp) as client:

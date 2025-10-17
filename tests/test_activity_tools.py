@@ -6,7 +6,6 @@ from datetime import UTC
 import pytest
 from fastmcp import Client
 
-from strava_mcp.server import mcp
 from tests.fixtures.activity_fixtures import (
     ACTIVITY_COMMENTS,
     ACTIVITY_KUDOERS,
@@ -33,7 +32,7 @@ def stub_api(respx_mock):
 class TestQueryActivities:
     """Test query_activities tool."""
 
-    async def test_query_activities_list_recent(self, stub_api, respx_mock):
+    async def test_query_activities_list_recent(self, stub_api, respx_mock, mcp):
         """Test querying recent activities list."""
         from httpx import Response
 
@@ -72,7 +71,7 @@ class TestQueryActivities:
         assert data["metadata"]["query_type"] == "activity_list"
         assert "time_range" in data["metadata"]
 
-    async def test_query_activities_single_by_id(self, stub_api):
+    async def test_query_activities_single_by_id(self, stub_api, mcp):
         """Test querying single activity by ID."""
         stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
 
@@ -99,7 +98,7 @@ class TestQueryActivities:
         assert data["metadata"]["query_type"] == "single_activity"
         assert data["metadata"]["activity_id"] == DETAILED_ACTIVITY_ID
 
-    async def test_query_activities_with_laps(self, stub_api):
+    async def test_query_activities_with_laps(self, stub_api, mcp):
         """Test querying activity with laps included."""
         stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
         stub_api.stub_activity_laps_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_LAPS)
@@ -120,7 +119,7 @@ class TestQueryActivities:
         assert "includes" in data["metadata"]
         assert "laps" in data["metadata"]["includes"]
 
-    async def test_query_activities_with_zones(self, stub_api):
+    async def test_query_activities_with_zones(self, stub_api, mcp):
         """Test querying activity with zones included."""
         stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
         stub_api.stub_activity_zones_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_ZONES)
@@ -138,7 +137,7 @@ class TestQueryActivities:
         assert "includes" in data["metadata"]
         assert "zones" in data["metadata"]["includes"]
 
-    async def test_query_activities_with_streams(self, stub_api):
+    async def test_query_activities_with_streams(self, stub_api, mcp):
         """Test querying activity with streams included."""
         stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
         stub_api.stub_activity_streams_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_STREAMS)
@@ -160,7 +159,7 @@ class TestQueryActivities:
         assert "includes" in data["metadata"]
         assert any("streams:" in inc for inc in data["metadata"]["includes"])
 
-    async def test_query_activities_empty_result(self, stub_api):
+    async def test_query_activities_empty_result(self, stub_api, mcp):
         """Test querying activities with no results."""
         stub_api.stub_activities_endpoint([])
 
@@ -173,7 +172,7 @@ class TestQueryActivities:
         assert data["data"]["activities"] == []
         assert data["data"]["aggregated"]["count"] == 0
 
-    async def test_query_activities_invalid_limit(self):
+    async def test_query_activities_invalid_limit(self, mcp):
         """Test querying activities with invalid limit."""
         async with Client(mcp) as client:
             result = await client.call_tool("query_activities", {"limit": 5000})
@@ -184,7 +183,7 @@ class TestQueryActivities:
         assert "error" in data
         assert "validation_error" in data["error"]["type"]
 
-    async def test_query_activities_string_limit_coercion(self, stub_api, respx_mock):
+    async def test_query_activities_string_limit_coercion(self, stub_api, respx_mock, mcp):
         """Test that limit parameter accepts strings and coerces them to integers."""
         from httpx import Response
 
@@ -212,7 +211,7 @@ class TestQueryActivities:
         assert data["pagination"]["limit"] == 1
         assert data["pagination"]["returned"] == 1
 
-    async def test_query_activities_invalid_string_limit(self):
+    async def test_query_activities_invalid_string_limit(self, mcp):
         """Test querying activities with non-numeric string limit."""
         async with Client(mcp) as client:
             result = await client.call_tool("query_activities", {"limit": "abc"})
@@ -228,7 +227,7 @@ class TestQueryActivities:
 class TestGetActivitySocial:
     """Test get_activity_social tool."""
 
-    async def test_get_activity_social_with_comments_and_kudos(self, stub_api):
+    async def test_get_activity_social_with_comments_and_kudos(self, stub_api, mcp):
         """Test getting social data with comments and kudos."""
         stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
         stub_api.stub_activity_comments_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_COMMENTS)
@@ -266,7 +265,7 @@ class TestGetActivitySocial:
         assert "metadata" in data
         assert "includes" in data["metadata"]
 
-    async def test_get_activity_social_comments_only(self, stub_api):
+    async def test_get_activity_social_comments_only(self, stub_api, mcp):
         """Test getting only comments."""
         stub_api.stub_activity_details_endpoint(DETAILED_ACTIVITY_ID, DETAILED_ACTIVITY)
         stub_api.stub_activity_comments_endpoint(DETAILED_ACTIVITY_ID, ACTIVITY_COMMENTS)
@@ -283,7 +282,7 @@ class TestGetActivitySocial:
         assert "comments" in data["data"]
         assert "kudos" not in data["data"]
 
-    async def test_get_activity_social_not_found(self, stub_api):
+    async def test_get_activity_social_not_found(self, stub_api, mcp):
         """Test getting social data for non-existent activity."""
         stub_api.stub_error_response("/activities/999999", status_code=404)
 
@@ -301,7 +300,7 @@ class TestGetActivitySocial:
 class TestActivityPagination:
     """Test pagination behavior for activity tools."""
 
-    async def test_query_activities_pagination_first_page(self, stub_api, respx_mock):
+    async def test_query_activities_pagination_first_page(self, stub_api, respx_mock, mcp):
         """Test first page of paginated activities returns cursor."""
         from datetime import datetime
 
@@ -341,7 +340,7 @@ class TestActivityPagination:
         # Should only return 10 items
         assert len(data["data"]["activities"]) == 10
 
-    async def test_query_activities_pagination_second_page(self, stub_api, respx_mock):
+    async def test_query_activities_pagination_second_page(self, stub_api, respx_mock, mcp):
         """Test using cursor to get second page."""
         from datetime import datetime
 
@@ -382,7 +381,7 @@ class TestActivityPagination:
         assert data["pagination"]["cursor"] is None
         assert data["pagination"]["returned"] == 5
 
-    async def test_query_activities_pagination_invalid_cursor(self):
+    async def test_query_activities_pagination_invalid_cursor(self, mcp):
         """Test invalid cursor returns error."""
         async with Client(mcp) as client:
             result = await client.call_tool("query_activities", {"cursor": "invalid_cursor_string"})
@@ -394,7 +393,7 @@ class TestActivityPagination:
         assert data["error"]["type"] == "validation_error"
         assert "cursor" in data["error"]["message"].lower()
 
-    async def test_query_activities_limit_validation(self):
+    async def test_query_activities_limit_validation(self, mcp):
         """Test limit parameter validation."""
         async with Client(mcp) as client:
             # Test limit too high
@@ -412,7 +411,7 @@ class TestActivityPagination:
             data = json.loads(get_text_content(result))
             assert "error" in data
 
-    async def test_query_activities_reduced_limit_with_enrichments(self, stub_api, respx_mock):
+    async def test_query_activities_reduced_limit_with_enrichments(self, stub_api, respx_mock, mcp):
         """Test that enrichments trigger lower default limit."""
         from datetime import datetime
 
@@ -450,7 +449,7 @@ class TestActivityPagination:
         assert len(data["data"]["activities"]) == 5
 
     async def test_query_activities_pagination_with_activity_type_filter(
-        self, stub_api, respx_mock
+        self, stub_api, respx_mock, mcp
     ):
         """Test pagination with activity_type filter applied correctly."""
         from datetime import datetime
@@ -495,7 +494,7 @@ class TestActivityPagination:
         assert data["pagination"]["limit"] == 10
         assert data["pagination"]["returned"] == 10
 
-    async def test_query_activities_sparse_type_filtering(self, stub_api, respx_mock):
+    async def test_query_activities_sparse_type_filtering(self, stub_api, respx_mock, mcp):
         """Test pagination with sparse activity type (requires multiple API pages)."""
         from datetime import datetime
 
