@@ -35,11 +35,26 @@ Infrastructure as code for the Strava MCP server lives in this directory. The st
    ```sh
    uv run cdk synth
    ```
-3. Deploy the stack:
+3. **Initial deployment** (circular dependency workaround):
    ```sh
    uv run cdk deploy
    ```
+   After the first deployment completes, note the Lambda Function URL from the stack outputs.
+
+4. **Update `config.py`** with the Lambda URL:
+   ```python
+   # config.py
+   STRAVA_MCP_BASE_URL = "https://your-lambda-url.lambda-url.region.on.aws"
+   ```
+
+5. **Redeploy** to apply the base URL configuration:
+   ```sh
+   uv run cdk deploy
+   ```
+
    Outputs include the public Lambda Function URL and DynamoDB table name.
+
+> **Note**: The initial deployment cannot include `STRAVA_MCP_BASE_URL` in the Lambda environment because the URL doesn't exist until after deployment. This two-step process is required only once.
 
 ## Post-Deployment Notes
 
