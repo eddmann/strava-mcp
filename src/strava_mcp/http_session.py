@@ -130,7 +130,7 @@ class StravaSession:
     client_id: str | None = None
     resource: str | None = None
 
-    def as_public_dict(self) -> dict[str, str | int | None]:
+    def as_public_dict(self) -> dict[str, Any]:
         """Return a redacted view suitable for logging or diagnostics."""
         return {
             "session_id": self.session_id,
@@ -706,7 +706,7 @@ class DynamoSessionStore(SessionStore):
     def _serialize_authorization(record: AuthorizationRecord) -> dict[str, Any]:
         return {
             "session_id": record.session_id,
-            "authorization_code": record.authorization_code.model_dump(),
+            "authorization_code": record.authorization_code.model_dump(mode="json"),
         }
 
     @staticmethod
@@ -718,13 +718,13 @@ class DynamoSessionStore(SessionStore):
 
     @staticmethod
     def _serialize_access_token(token: OAuthAccessToken) -> dict[str, Any]:
-        return token.model_dump()
+        return token.model_dump(mode="json")
 
     @staticmethod
     def _serialize_refresh_record(record: RefreshRecord) -> dict[str, Any]:
         return {
             "session_id": record.session_id,
-            "refresh_token": record.refresh_token.model_dump(),
+            "refresh_token": record.refresh_token.model_dump(mode="json"),
         }
 
     @staticmethod
@@ -753,7 +753,7 @@ class DynamoSessionStore(SessionStore):
         await self._put_item(
             self._access_token_key(token.token),
             {
-                "token": token.model_dump(),
+                "token": token.model_dump(mode="json"),
                 "session_id": session.session_id,
             },
             ttl=self._ttl_timestamp(),
