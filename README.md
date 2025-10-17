@@ -188,12 +188,13 @@ Start the server in HTTP mode for deploying remote:
 
 ```bash
 # Using UV
-uv run strava-mcp --transport http
+uv run --directory /ABSOLUTE/PATH/TO/strava-mcp strava-mcp --transport http
 
 # Using Docker
-docker run -p 8000:8000 \
+docker run -p 8000:8000 --rm \
+  -v "/ABSOLUTE/PATH/TO/strava-mcp.env:/app/.env" \
   ghcr.io/eddmann/strava-mcp:latest \
-  uv run strava-mcp --transport http
+  --transport http
 ```
 
 Environment variables can be configured using the `strava-mcp-auth` setup wizard (see Installation & Setup above).
