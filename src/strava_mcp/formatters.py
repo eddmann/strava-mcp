@@ -171,14 +171,14 @@ def format_activity_type(activity_type: str, sport_type: str | None = None) -> s
     return activity_type
 
 
-def calculate_avg(values: list[int] | list[float]) -> float:
+def _calculate_avg(values: list[int] | list[float]) -> float:
     """Calculate average of numeric values."""
     if not values:
         return 0.0
     return sum(values) / len(values)
 
 
-def calculate_normalized_power(watts: Sequence[int | float]) -> float:
+def _calculate_normalized_power(watts: Sequence[int | float]) -> float:
     """
     Calculate Normalized Power (NP) from power data.
 
@@ -228,11 +228,11 @@ def format_stream_stats(
     stats.append(f"Count: {len(values)}")
     stats.append(f"Max: {max(values)}")
     stats.append(f"Min: {min(values)}")
-    stats.append(f"Avg: {calculate_avg(values):.1f}")
+    stats.append(f"Avg: {_calculate_avg(values):.1f}")
 
     # Add specialized stats
     if stream_name == "watts" and isinstance(values[0], int):
-        np = calculate_normalized_power(values)
+        np = _calculate_normalized_power(values)
         stats.append(f"NP: {np}")
     elif stream_name == "velocity_smooth":
         max_kmh = max(values) * 3.6

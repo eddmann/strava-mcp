@@ -13,6 +13,12 @@ dependencies = [
     "python-dotenv>=1.1.1",
 ]
 
+[project.optional-dependencies]
+http = [
+    "boto3>=1.34.0",  # For DynamoDB session storage
+    "mangum>=0.17.0", # For AWS Lambda deployment
+]
+
 [project.scripts]
 strava-mcp = "strava_mcp.server:main"
 strava-mcp-auth = "strava_mcp.scripts.setup_auth:main"
@@ -53,7 +59,7 @@ ignore = ["E501"]  # Line length enforced by ruff format instead
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py files
-"src/strava_mcp/server.py" = ["E402"]  # Imports must come after FastMCP initialization
+"src/strava_mcp/server.py" = ["E402"]  # Imports must come after mode detection
 
 [tool.pyright]
 strict = ["src"]

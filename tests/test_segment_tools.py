@@ -5,7 +5,6 @@ import json
 import pytest
 from fastmcp import Client
 
-from strava_mcp.server import mcp
 from tests.fixtures.segment_fixtures import (
     DETAILED_SEGMENT,
     EXPLORE_SEGMENTS_RESPONSE,
@@ -26,7 +25,7 @@ def stub_api(respx_mock):
 class TestQuerySegments:
     """Test query_segments tool."""
 
-    async def test_query_segments_single_segment(self, stub_api):
+    async def test_query_segments_single_segment(self, stub_api, mcp):
         """Test querying single segment by ID."""
         segment_id = 229781
         stub_api.stub_segment_details_endpoint(segment_id, DETAILED_SEGMENT)
@@ -53,7 +52,7 @@ class TestQuerySegments:
         assert data["metadata"]["query_type"] == "single_segment"
         assert data["metadata"]["segment_id"] == segment_id
 
-    async def test_query_segments_with_efforts(self, stub_api):
+    async def test_query_segments_with_efforts(self, stub_api, mcp):
         """Test querying segment with efforts history."""
         segment_id = 229781
         stub_api.stub_segment_details_endpoint(segment_id, DETAILED_SEGMENT)
@@ -82,7 +81,7 @@ class TestQuerySegments:
         assert "includes" in data["metadata"]
         assert "efforts" in data["metadata"]["includes"]
 
-    async def test_query_segments_starred_list(self, stub_api):
+    async def test_query_segments_starred_list(self, stub_api, mcp):
         """Test querying starred segments."""
         segments = [SUMMARY_SEGMENT, {**SUMMARY_SEGMENT, "id": 2, "name": "Segment 2"}]
         stub_api.stub_starred_segments_endpoint(segments)
@@ -110,7 +109,7 @@ class TestQuerySegments:
         # Check metadata
         assert data["metadata"]["query_type"] == "starred_segments"
 
-    async def test_query_segments_starred_empty(self, stub_api):
+    async def test_query_segments_starred_empty(self, stub_api, mcp):
         """Test querying starred segments with no results."""
         stub_api.stub_starred_segments_endpoint([])
 
@@ -123,7 +122,7 @@ class TestQuerySegments:
         assert data["data"]["count"] == 0
         assert data["data"]["segments"] == []
 
-    async def test_query_segments_explore(self, stub_api):
+    async def test_query_segments_explore(self, stub_api, mcp):
         """Test exploring segments in geographic area."""
         stub_api.stub_explore_segments_endpoint(EXPLORE_SEGMENTS_RESPONSE)
 
@@ -153,7 +152,7 @@ class TestQuerySegments:
         assert data["metadata"]["query_type"] == "explore_segments"
         assert data["metadata"]["bounds"] == bounds
 
-    async def test_query_segments_explore_with_activity_type(self, stub_api):
+    async def test_query_segments_explore_with_activity_type(self, stub_api, mcp):
         """Test exploring segments with activity type filter."""
         stub_api.stub_explore_segments_endpoint(EXPLORE_SEGMENTS_RESPONSE)
 
@@ -169,7 +168,7 @@ class TestQuerySegments:
         assert data["data"]["count"] > 0
         assert data["metadata"]["activity_type"] == "riding"
 
-    async def test_query_segments_explore_with_climb_categories(self, stub_api):
+    async def test_query_segments_explore_with_climb_categories(self, stub_api, mcp):
         """Test exploring segments with climb category filters."""
         stub_api.stub_explore_segments_endpoint(EXPLORE_SEGMENTS_RESPONSE)
 
@@ -187,7 +186,7 @@ class TestQuerySegments:
         assert data["metadata"]["min_category"] == 1
         assert data["metadata"]["max_category"] == 3
 
-    async def test_query_segments_explore_invalid_bounds(self):
+    async def test_query_segments_explore_invalid_bounds(self, mcp):
         """Test exploring segments with invalid bounds format."""
         bounds = "37.7,-122.5"  # Only 2 values instead of 4
         async with Client(mcp) as client:
@@ -199,7 +198,7 @@ class TestQuerySegments:
         assert "error" in data
         assert "validation_error" in data["error"]["type"]
 
-    async def test_query_segments_default_starred(self, stub_api):
+    async def test_query_segments_default_starred(self, stub_api, mcp):
         """Test that default query returns starred segments."""
         segments = [SUMMARY_SEGMENT]
         stub_api.stub_starred_segments_endpoint(segments)
@@ -212,7 +211,7 @@ class TestQuerySegments:
 
         assert data["metadata"]["query_type"] == "starred_segments"
 
-    async def test_query_segments_with_limit(self, stub_api):
+    async def test_query_segments_with_limit(self, stub_api, mcp):
         """Test querying segments with custom limit."""
         segments = [SUMMARY_SEGMENT for _ in range(50)]
         stub_api.stub_starred_segments_endpoint(segments)
@@ -226,7 +225,7 @@ class TestQuerySegments:
         # Should return max 10 segments
         assert len(data["data"]["segments"]) <= 10
 
-    async def test_query_segments_with_feet_units(self, stub_api):
+    async def test_query_segments_with_feet_units(self, stub_api, mcp):
         """Test querying segments with feet/miles units."""
         segment_id = 229781
         stub_api.stub_segment_details_endpoint(segment_id, DETAILED_SEGMENT)
@@ -243,7 +242,7 @@ class TestQuerySegments:
         assert "mi" in data["data"]["segment"]["distance"]["formatted"]
         assert "ft" in data["data"]["segment"]["elevation_high"]["formatted"]
 
-    async def test_query_segments_not_found(self, stub_api):
+    async def test_query_segments_not_found(self, stub_api, mcp):
         """Test querying non-existent segment."""
         stub_api.stub_error_response("/segments/999999", status_code=404)
 
@@ -261,7 +260,7 @@ class TestQuerySegments:
 class TestStarSegment:
     """Test star_segment tool."""
 
-    async def test_star_segment_success(self, stub_api):
+    async def test_star_segment_success(self, stub_api, mcp):
         """Test successful segment starring."""
         segment_id = 229781
         starred_segment = {**DETAILED_SEGMENT, "starred": True}
@@ -284,7 +283,7 @@ class TestStarSegment:
         # Check metadata
         assert "metadata" in data
 
-    async def test_unstar_segment_success(self, stub_api):
+    async def test_unstar_segment_success(self, stub_api, mcp):
         """Test successful segment unstarring."""
         segment_id = 229781
         unstarred_segment = {**DETAILED_SEGMENT, "starred": False}
@@ -302,7 +301,7 @@ class TestStarSegment:
         assert data["data"]["starred"] is False
         assert data["data"]["success"] is True
 
-    async def test_star_segment_not_found(self, stub_api):
+    async def test_star_segment_not_found(self, stub_api, mcp):
         """Test starring non-existent segment."""
         stub_api.stub_error_response("/segments/999999/starred", method="PUT", status_code=404)
 
@@ -315,7 +314,7 @@ class TestStarSegment:
         assert "error" in data
         assert "not_found" in data["error"]["type"]
 
-    async def test_star_segment_rate_limit(self, stub_api):
+    async def test_star_segment_rate_limit(self, stub_api, mcp):
         """Test starring segment with rate limit error."""
         stub_api.stub_error_response("/segments/229781/starred", method="PUT", status_code=429)
 
@@ -332,7 +331,7 @@ class TestStarSegment:
 class TestGetSegmentLeaderboard:
     """Test get_segment_leaderboard tool."""
 
-    async def test_get_segment_leaderboard_success(self, stub_api):
+    async def test_get_segment_leaderboard_success(self, stub_api, mcp):
         """Test successful segment leaderboard retrieval."""
         segment_id = 229781
         stub_api.stub_segment_leaderboard_endpoint(segment_id, SEGMENT_LEADERBOARD)
@@ -361,7 +360,7 @@ class TestGetSegmentLeaderboard:
         assert data["metadata"]["segment_id"] == segment_id
         assert "filters" in data["metadata"]
 
-    async def test_get_segment_leaderboard_with_gender_filter(self, stub_api):
+    async def test_get_segment_leaderboard_with_gender_filter(self, stub_api, mcp):
         """Test segment leaderboard with gender filter."""
         segment_id = 229781
         stub_api.stub_segment_leaderboard_endpoint(segment_id, SEGMENT_LEADERBOARD, gender="M")
@@ -376,7 +375,7 @@ class TestGetSegmentLeaderboard:
 
         assert data["metadata"]["filters"]["gender"] == "M"
 
-    async def test_get_segment_leaderboard_with_age_group(self, stub_api):
+    async def test_get_segment_leaderboard_with_age_group(self, stub_api, mcp):
         """Test segment leaderboard with age group filter."""
         segment_id = 229781
         stub_api.stub_segment_leaderboard_endpoint(
@@ -393,7 +392,7 @@ class TestGetSegmentLeaderboard:
 
         assert data["metadata"]["filters"]["age_group"] == "25_34"
 
-    async def test_get_segment_leaderboard_with_weight_class(self, stub_api):
+    async def test_get_segment_leaderboard_with_weight_class(self, stub_api, mcp):
         """Test segment leaderboard with weight class filter."""
         segment_id = 229781
         stub_api.stub_segment_leaderboard_endpoint(
@@ -410,7 +409,7 @@ class TestGetSegmentLeaderboard:
 
         assert data["metadata"]["filters"]["weight_class"] == "75_84"
 
-    async def test_get_segment_leaderboard_with_following(self, stub_api):
+    async def test_get_segment_leaderboard_with_following(self, stub_api, mcp):
         """Test segment leaderboard with following filter."""
         segment_id = 229781
         stub_api.stub_segment_leaderboard_endpoint(segment_id, SEGMENT_LEADERBOARD, following=True)
@@ -425,7 +424,7 @@ class TestGetSegmentLeaderboard:
 
         assert data["metadata"]["filters"]["following"] is True
 
-    async def test_get_segment_leaderboard_with_club(self, stub_api):
+    async def test_get_segment_leaderboard_with_club(self, stub_api, mcp):
         """Test segment leaderboard with club filter."""
         segment_id = 229781
         club_id = 12345
@@ -441,7 +440,7 @@ class TestGetSegmentLeaderboard:
 
         assert data["metadata"]["filters"]["club_id"] == club_id
 
-    async def test_get_segment_leaderboard_with_date_range(self, stub_api):
+    async def test_get_segment_leaderboard_with_date_range(self, stub_api, mcp):
         """Test segment leaderboard with date range filter."""
         segment_id = 229781
         stub_api.stub_segment_leaderboard_endpoint(
@@ -458,7 +457,7 @@ class TestGetSegmentLeaderboard:
 
         assert data["metadata"]["filters"]["date_range"] == "this_year"
 
-    async def test_get_segment_leaderboard_with_multiple_filters(self, stub_api):
+    async def test_get_segment_leaderboard_with_multiple_filters(self, stub_api, mcp):
         """Test segment leaderboard with multiple filters."""
         segment_id = 229781
         stub_api.stub_segment_leaderboard_endpoint(
@@ -488,7 +487,7 @@ class TestGetSegmentLeaderboard:
         assert filters["age_group"] == "35_44"
         assert filters["date_range"] == "this_month"
 
-    async def test_get_segment_leaderboard_empty(self, stub_api):
+    async def test_get_segment_leaderboard_empty(self, stub_api, mcp):
         """Test segment leaderboard with no entries."""
         segment_id = 229781
         empty_leaderboard = {
@@ -508,7 +507,7 @@ class TestGetSegmentLeaderboard:
         assert data["data"]["entry_count"] == 0
         assert data["data"]["entries"] == []
 
-    async def test_get_segment_leaderboard_not_found(self, stub_api):
+    async def test_get_segment_leaderboard_not_found(self, stub_api, mcp):
         """Test segment leaderboard with non-existent segment."""
         stub_api.stub_error_response("/segments/999999/leaderboard", status_code=404)
 
@@ -525,7 +524,7 @@ class TestGetSegmentLeaderboard:
 class TestSegmentPagination:
     """Test pagination behavior for segment tools."""
 
-    async def test_query_segments_pagination_starred(self, respx_mock):
+    async def test_query_segments_pagination_starred(self, respx_mock, mcp):
         """Test pagination for starred segments list."""
         from httpx import Response
 
@@ -549,7 +548,7 @@ class TestSegmentPagination:
         assert data["pagination"]["limit"] == 10
         assert len(data["data"]["segments"]) == 10
 
-    async def test_query_segments_explore_pagination(self, stub_api):
+    async def test_query_segments_explore_pagination(self, stub_api, mcp):
         """Test client-side pagination for explore segments."""
         # Create 25 segments in explore result
         all_segments = [
@@ -602,7 +601,7 @@ class TestSegmentPagination:
         assert len(data["data"]["segments"]) == 10
         assert data["data"]["segments"][0]["id"] == 6010  # Offset of 10
 
-    async def test_get_segment_leaderboard_pagination_has_more(self, stub_api):
+    async def test_get_segment_leaderboard_pagination_has_more(self, stub_api, mcp):
         """Test leaderboard pagination returns correct metadata."""
         segment_id = 229781
 
@@ -641,7 +640,7 @@ class TestSegmentPagination:
         assert data["pagination"]["limit"] == 50
         assert len(data["data"]["entries"]) == 50  # Should trim to limit
 
-    async def test_query_segments_limit_validation(self):
+    async def test_query_segments_limit_validation(self, mcp):
         """Test segment limit validation."""
         # Test limit too high
         async with Client(mcp) as client:

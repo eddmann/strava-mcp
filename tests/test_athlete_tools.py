@@ -5,7 +5,6 @@ import json
 import pytest
 from fastmcp import Client
 
-from strava_mcp.server import mcp
 from tests.fixtures.athlete_fixtures import (
     ATHLETE_STATS,
     ATHLETE_ZONES,
@@ -25,7 +24,7 @@ def stub_api(respx_mock):
 class TestGetAthleteProfile:
     """Test get_athlete_profile tool."""
 
-    async def test_get_athlete_profile_full(self, stub_api):
+    async def test_get_athlete_profile_full(self, stub_api, mcp):
         """Test getting full profile with stats and zones."""
         athlete_id = DETAILED_ATHLETE["id"]
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
@@ -83,7 +82,7 @@ class TestGetAthleteProfile:
         assert "stats:all" in data["metadata"]["includes"]
         assert "zones" in data["metadata"]["includes"]
 
-    async def test_get_athlete_profile_profile_only(self, stub_api):
+    async def test_get_athlete_profile_profile_only(self, stub_api, mcp):
         """Test getting profile without stats or zones."""
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
 
@@ -103,7 +102,7 @@ class TestGetAthleteProfile:
         # Metadata should show no includes
         assert data["metadata"]["includes"] == []
 
-    async def test_get_athlete_profile_recent_stats(self, stub_api):
+    async def test_get_athlete_profile_recent_stats(self, stub_api, mcp):
         """Test getting profile with recent stats only."""
         athlete_id = DETAILED_ATHLETE["id"]
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
@@ -127,7 +126,7 @@ class TestGetAthleteProfile:
         # Metadata should show recent period
         assert "stats:recent" in data["metadata"]["includes"]
 
-    async def test_get_athlete_profile_ytd_stats(self, stub_api):
+    async def test_get_athlete_profile_ytd_stats(self, stub_api, mcp):
         """Test getting profile with YTD stats only."""
         athlete_id = DETAILED_ATHLETE["id"]
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
@@ -151,7 +150,7 @@ class TestGetAthleteProfile:
         # Metadata should show ytd period
         assert "stats:ytd" in data["metadata"]["includes"]
 
-    async def test_get_athlete_profile_with_ftp_and_weight(self, stub_api):
+    async def test_get_athlete_profile_with_ftp_and_weight(self, stub_api, mcp):
         """Test profile with FTP and weight values."""
         athlete_with_ftp = {**DETAILED_ATHLETE, "ftp": 250, "weight": 75.0}
         stub_api.stub_athlete_endpoint(athlete_with_ftp)
@@ -171,7 +170,7 @@ class TestGetAthleteProfile:
         assert profile["weight"]["kg"] == 75.0
         assert "formatted" in profile["weight"]
 
-    async def test_get_athlete_profile_with_bikes_and_shoes(self, stub_api):
+    async def test_get_athlete_profile_with_bikes_and_shoes(self, stub_api, mcp):
         """Test profile with bikes and shoes."""
         athlete_with_gear = {
             **DETAILED_ATHLETE,
@@ -217,7 +216,7 @@ class TestGetAthleteProfile:
         assert len(profile["shoes"]) == 1
         assert profile["shoes"][0]["name"] == "Nike Pegasus"
 
-    async def test_get_athlete_profile_zones_only(self, stub_api):
+    async def test_get_athlete_profile_zones_only(self, stub_api, mcp):
         """Test getting profile with zones only."""
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
         stub_api.stub_athlete_zones_endpoint(ATHLETE_ZONES)
@@ -238,7 +237,7 @@ class TestGetAthleteProfile:
         assert "heart_rate" in zones
         assert "power" in zones
 
-    async def test_get_athlete_profile_hr_zones_only(self, stub_api):
+    async def test_get_athlete_profile_hr_zones_only(self, stub_api, mcp):
         """Test profile with only heart rate zones."""
         stub_api.stub_athlete_endpoint(DETAILED_ATHLETE)
         stub_api.stub_athlete_zones_endpoint(ATHLETE_ZONES_HR_ONLY)
@@ -255,7 +254,7 @@ class TestGetAthleteProfile:
         assert "heart_rate" in zones
         assert "power" not in zones
 
-    async def test_get_athlete_profile_with_feet_units(self, stub_api):
+    async def test_get_athlete_profile_with_feet_units(self, stub_api, mcp):
         """Test profile with feet/miles units."""
         athlete_id = DETAILED_ATHLETE["id"]
         athlete_with_gear = {
@@ -295,7 +294,7 @@ class TestGetAthleteProfile:
         # Check bike distance uses miles
         assert "mi" in data["data"]["profile"]["bikes"][0]["distance"]["formatted"]
 
-    async def test_get_athlete_profile_api_error(self, stub_api):
+    async def test_get_athlete_profile_api_error(self, stub_api, mcp):
         """Test profile with API error."""
         stub_api.stub_error_response("/athlete", status_code=500)
 
@@ -308,7 +307,7 @@ class TestGetAthleteProfile:
         assert "error" in data
         assert "api_error" in data["error"]["type"]
 
-    async def test_get_athlete_profile_rate_limit(self, stub_api):
+    async def test_get_athlete_profile_rate_limit(self, stub_api, mcp):
         """Test profile with rate limit error."""
         stub_api.stub_error_response("/athlete", status_code=429)
 
@@ -322,7 +321,7 @@ class TestGetAthleteProfile:
         assert "rate_limit" in data["error"]["type"]
         assert "suggestions" in data["error"]
 
-    async def test_get_athlete_profile_minimal_fields(self, stub_api):
+    async def test_get_athlete_profile_minimal_fields(self, stub_api, mcp):
         """Test profile with minimal athlete data."""
         minimal_athlete = {
             "id": 123,
