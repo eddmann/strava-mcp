@@ -265,7 +265,7 @@ class SessionStore:
         session_id = secrets.token_urlsafe(16)
 
         expires_at = datetime.fromtimestamp(token_data.expires_at, tz=UTC)
-        athlete = token_data.athlete.model_dump() if token_data.athlete else None
+        athlete = token_data.athlete.model_dump(mode="json") if token_data.athlete else None
         athlete_id = token_data.athlete.id if token_data.athlete else None
         athlete_name = (
             f"{token_data.athlete.firstname} {token_data.athlete.lastname}".strip()
@@ -304,7 +304,7 @@ class SessionStore:
             session.updated_at = now
             session.session_expires_at = max(session.session_expires_at, now + SESSION_TTL)
             if token_data.athlete:
-                session.athlete = token_data.athlete.model_dump()
+                session.athlete = token_data.athlete.model_dump(mode="json")
                 session.athlete_id = token_data.athlete.id
                 session.athlete_name = (
                     f"{token_data.athlete.firstname} {token_data.athlete.lastname}".strip()
