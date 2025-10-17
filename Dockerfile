@@ -15,8 +15,8 @@ COPY pyproject.toml uv.lock* README.md ./
 # Copy source code (needed for building the package)
 COPY src/ ./src/
 
-# Install dependencies into a virtual environment
-RUN uv sync --frozen --no-dev
+# Install dependencies into a virtual environment (including http extra for boto3/mangum)
+RUN uv sync --frozen --no-dev --extra http
 
 # Final stage - minimal runtime image
 FROM --platform=$TARGETPLATFORM python:3.11-slim
