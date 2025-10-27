@@ -80,6 +80,8 @@ class StravaClient:
     """Async HTTP client for Strava API with automatic token refresh."""
 
     BASE_URL = "https://www.strava.com/api/v3"
+    DEFAULT_PER_PAGE = 200  # Max allowed by Strava API
+    DEFAULT_MAX_API_CALLS = 10  # Safety limit per request
 
     def __init__(self, context: StravaAuthContext):
         """Initialize the Strava API client."""
@@ -181,124 +183,107 @@ class StravaClient:
 
     # Activity methods
 
-    async def get_recent_activities(
-        self,
-        page: int = 1,
-        per_page: int = 30,
-    ) -> list[SummaryActivity]:
-        """Get recent activities for the authenticated athlete."""
-        response = await self._request(
-            "GET",
-            "/athlete/activities",
-            params={"page": page, "per_page": per_page},
-        )
-        adapter = TypeAdapter(list[SummaryActivity])
-        return adapter.validate_python(response.json())
-
-    async def get_all_activities(
+    async def get_activities(
         self,
         before: datetime | None = None,
         after: datetime | None = None,
-        per_page: int = 30,
+        start_page: int = 1,
         max_activities: int | None = None,
-        max_api_calls: int = 5,
-    ) -> list[SummaryActivity]:
-        """Get all activities with optional date filtering."""
-        all_activities: list[SummaryActivity] = []
-        page = 1
-        api_calls = 0
+        activity_type: str | None = None,
+        distance_min: int | None = None,
+        distance_max: int | None = None,
+        title_contains: str | None = None,
+        is_race: bool | None = None,
+    ) -> tuple[list[SummaryActivity], bool]:
+        """Get activities with comprehensive client-side filtering.
 
-        params: dict[str, Any] = {"per_page": per_page}
-        if before:
-            params["before"] = int(before.timestamp())
-        if after:
-            params["after"] = int(after.timestamp())
-
-        while True:
-            if api_calls >= max_api_calls:
-                break
-
-            params["page"] = page
-            response = await self._request("GET", "/athlete/activities", params=params)
-            adapter = TypeAdapter(list[SummaryActivity])
-            activities = adapter.validate_python(response.json())
-
-            if not activities:
-                break
-
-            all_activities.extend(activities)
-            api_calls += 1
-
-            if max_activities and len(all_activities) >= max_activities:
-                all_activities = all_activities[:max_activities]
-                break
-
-            page += 1
-
-        return all_activities
-
-    async def get_activities_by_type(
-        self,
-        activity_type: str,
-        before: datetime | None = None,
-        after: datetime | None = None,
-        per_page: int = 30,
-        max_activities: int | None = None,
-        max_api_calls: int = 10,
-    ) -> list[SummaryActivity]:
-        """Get activities filtered by type.
-
-        Since Strava API doesn't support server-side type filtering,
-        this fetches activities iteratively until we have enough of the desired type.
+        This method fetches activities from the Strava API and applies client-side
+        filters iteratively until enough results are found or safety limits are hit.
 
         Args:
-            activity_type: Activity type to filter (e.g., 'Run', 'Ride')
             before: Filter activities before this timestamp
             after: Filter activities after this timestamp
-            per_page: Number of activities per API call (max 200)
-            max_activities: Maximum activities of the desired type to return
-            max_api_calls: Maximum API calls to make (default 10)
+            start_page: Strava API page number to start from (for pagination)
+            max_activities: Maximum number of filtered activities to return
+            activity_type: Filter by activity type (e.g., 'Run', 'Ride')
+            distance_min: Minimum distance in meters
+            distance_max: Maximum distance in meters
+            title_contains: Substring to search in activity names
+            is_race: Filter by race status (True=races, False=non-races)
 
         Returns:
-            List of activities matching the specified type
-        """
-        filtered_activities: list[SummaryActivity] = []
-        page = 1
-        api_calls = 0
+            Tuple of (filtered_activities, is_exhausted):
+            - filtered_activities: List of filtered activities (up to max_activities)
+            - is_exhausted: True if Strava has no more activities to fetch
+                           False if we hit API safety limits or got enough results
 
-        params: dict[str, Any] = {"per_page": per_page}
+        Note:
+            Uses reduced safety limits with filters (5 API calls vs 10) to prevent
+            excessive re-fetching when pagination is used. Each paginated request
+            re-fetches from the beginning to handle client-side filtering correctly.
+        """
+        from .filters import apply_filters
+
+        # Reduce API call limit when using client-side filters to prevent
+        # excessive API usage during pagination (which re-fetches from start)
+        has_filters = any(
+            [activity_type, distance_min, distance_max, title_contains, is_race is not None]
+        )
+        max_api_calls = 5 if has_filters else self.DEFAULT_MAX_API_CALLS
+
+        filtered_results: list[SummaryActivity] = []
+        strava_page = start_page
+        api_calls = 0
+        is_exhausted = False
+
+        params: dict[str, Any] = {"per_page": self.DEFAULT_PER_PAGE}
         if before:
             params["before"] = int(before.timestamp())
         if after:
             params["after"] = int(after.timestamp())
 
+        # Keep fetching until we have enough results or hit limits
         while True:
             # Check termination conditions
             if api_calls >= max_api_calls:
                 break
 
-            if max_activities and len(filtered_activities) >= max_activities:
+            if max_activities and len(filtered_results) >= max_activities:
                 break
 
-            params["page"] = page
+            # Fetch one page from Strava
+            params["page"] = strava_page
             response = await self._request("GET", "/athlete/activities", params=params)
             adapter = TypeAdapter(list[SummaryActivity])
-            activities = adapter.validate_python(response.json())
+            raw_activities = adapter.validate_python(response.json())
 
-            if not activities:
+            # No more activities from Strava
+            if not raw_activities:
+                is_exhausted = True
                 break
 
-            # Filter by activity type
-            matching = [a for a in activities if a.type == activity_type]
-            filtered_activities.extend(matching)
+            # Apply client-side filters
+            filtered_batch = apply_filters(
+                raw_activities,
+                activity_type=activity_type,
+                distance_min=distance_min,
+                distance_max=distance_max,
+                title_contains=title_contains,
+                is_race=is_race,
+            )
+
+            # Add to results
+            filtered_results.extend(filtered_batch)
+
+            # Move to next page
+            strava_page += 1
             api_calls += 1
-            page += 1
 
-        # Limit to max_activities
+        # Trim to requested limit
         if max_activities:
-            filtered_activities = filtered_activities[:max_activities]
+            filtered_results = filtered_results[:max_activities]
 
-        return filtered_activities
+        return (filtered_results, is_exhausted)
 
     async def get_activity(self, activity_id: int) -> DetailedActivity:
         """Get detailed information about a specific activity."""

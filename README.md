@@ -251,6 +251,8 @@ Use built-in prompt templates for common queries (available via prompt suggestio
 "Show me my runs from the last 30 days"
 "Get my last long run with lap splits and heart rate zones"
 "Show me the comments and kudos on my half marathon race"
+"Find all my marathon races from this year"
+"Show me all 10km runs from the last 90 days"
 ```
 
 ### Athlete Profile & Stats
@@ -280,8 +282,10 @@ _Note: The athlete profile resource (`strava://athlete/profile`) automatically p
 
 ```
 "Analyze my training over the past 30 days"
+"Analyze my marathon race performance this year"
 "Compare my last three 10K runs"
 "Find runs similar to my last tempo workout"
+"Show me all my 5k races from the last year"
 ```
 
 _Note: List-returning tools use cursor-based pagination with default limits (10 items for activities/segments/routes, 50 for leaderboards)._
@@ -290,10 +294,10 @@ _Note: List-returning tools use cursor-based pagination with default limits (10 
 
 ### Activities (2 tools)
 
-| Tool                  | Description                                                                  |
-| --------------------- | ---------------------------------------------------------------------------- |
-| `query-activities`    | Unified query for activities with optional enrichment (laps, zones, streams) |
-| `get-activity-social` | Get comments and kudos for an activity                                       |
+| Tool                  | Description                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `query-activities`    | Unified query for activities with filtering (distance, title, race status) and optional enrichment (laps, zones, streams) |
+| `get-activity-social` | Get comments and kudos for an activity                                                                                    |
 
 ### Athlete (1 tool)
 
@@ -318,11 +322,11 @@ _Note: List-returning tools use cursor-based pagination with default limits (10 
 
 ### Analysis (3 tools)
 
-| Tool                      | Description                                                              |
-| ------------------------- | ------------------------------------------------------------------------ |
-| `analyze-training`        | Analyze training over a time period with aggregated metrics and insights |
-| `compare-activities`      | Compare 2-5 activities side-by-side                                      |
-| `find-similar-activities` | Find activities similar to a reference activity for progress tracking    |
+| Tool                      | Description                                                                                              |
+| ------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `analyze-training`        | Analyze training over a time period with filtering (distance, title, race status) and aggregated metrics |
+| `compare-activities`      | Compare 2-5 activities side-by-side                                                                      |
+| `find-similar-activities` | Find activities similar to a reference activity with pre-filtering options for progress tracking         |
 
 ## MCP Resources
 
@@ -336,13 +340,14 @@ Resources provide ongoing context to the LLM without requiring explicit tool cal
 
 Prompt templates for common queries (accessible via prompt suggestion in Claude):
 
-| Prompt                    | Description                                             |
-| ------------------------- | ------------------------------------------------------- |
-| `analyze-recent-training` | Comprehensive training analysis over a specified period |
-| `segment-performance`     | Detailed segment performance analysis                   |
-| `activity-deep-dive`      | Deep dive into a specific activity with all metrics     |
-| `compare-recent-runs`     | Compare recent runs to identify trends and improvements |
-| `training-summary`        | Comprehensive training overview with recommendations    |
+| Prompt                      | Description                                             |
+| --------------------------- | ------------------------------------------------------- |
+| `analyze-recent-training`   | Comprehensive training analysis over a specified period |
+| `race-performance-analysis` | Analyze race performance for a specific distance        |
+| `segment-performance`       | Detailed segment performance analysis                   |
+| `activity-deep-dive`        | Deep dive into a specific activity with all metrics     |
+| `compare-recent-runs`       | Compare recent runs to identify trends and improvements |
+| `training-summary`          | Comprehensive training overview with recommendations    |
 
 ## License
 
