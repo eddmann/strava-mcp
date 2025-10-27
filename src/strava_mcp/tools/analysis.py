@@ -25,6 +25,18 @@ async def analyze_training(
     activity_type: Annotated[
         ActivityType | None, "Filter by activity type (e.g., 'Run', 'Ride', 'Swim')"
     ] = None,
+    distance: Annotated[
+        str | None,
+        "Filter by distance. Formats: race name ('5k', 'marathon'), "
+        "numeric with unit ('10km', '5mi', '10000' for meters) with ±10% buffer, "
+        "or exact range ('5km:10km', '3mi:6mi'). Units: km, mi, m (defaults to meters)",
+    ] = None,
+    title_contains: Annotated[
+        str | None, "Filter by activity title (case-insensitive substring match)"
+    ] = None,
+    is_race: Annotated[
+        bool | None, "Filter by race status (true=races only, false=non-races only)"
+    ] = None,
     max_activities: Annotated[
         int,
         "Max activities to analyze (1-500, default 200). Higher values may be slow.",
@@ -100,22 +112,33 @@ async def analyze_training(
         # Parse time range
         start, end = parse_time_range(period)
 
-        if activity_type:
-            activities = await client.get_activities_by_type(
-                activity_type=activity_type,
-                after=start,
-                before=end,
-                per_page=200,
-                max_activities=max_activities,
-                max_api_calls=min(10, (max_activities // 50) + 2),
-            )
-        else:
-            activities = await client.get_all_activities(
-                after=start,
-                before=end,
-                per_page=200,
-                max_activities=max_activities,
-            )
+        # Parse distance filter if provided
+        from ..filters import parse_distance
+
+        distance_min: int | None = None
+        distance_max: int | None = None
+
+        if distance:
+            try:
+                distance_min, distance_max = parse_distance(distance)
+            except ValueError as e:
+                return ResponseBuilder.build_error_response(
+                    str(e),
+                    error_type="validation_error",
+                )
+
+        # Use new get_activities method with comprehensive filtering
+        activities, _ = await client.get_activities(
+            after=start,
+            before=end,
+            start_page=1,
+            max_activities=max_activities,
+            activity_type=activity_type,
+            distance_min=distance_min,
+            distance_max=distance_max,
+            title_contains=title_contains,
+            is_race=is_race,
+        )
 
         if not activities:
             metadata = {"period": get_range_description(period)}
@@ -486,6 +509,21 @@ async def find_similar_activities(
     ] = "type,distance",
     limit: Annotated[str | int, "Max similar activities to return (1-20, default 10)"] = 10,
     search_days: Annotated[int, "Days to search back (1-365, default 90)"] = 90,
+    activity_type: Annotated[
+        ActivityType | None, "Pre-filter by activity type (e.g., 'Run', 'Ride')"
+    ] = None,
+    distance: Annotated[
+        str | None,
+        "Pre-filter by distance. Formats: race name ('5k', 'marathon'), "
+        "numeric with unit ('10km', '5mi', '10000' for meters) with ±10% buffer, "
+        "or exact range ('5km:10km', '3mi:6mi'). Units: km, mi, m (defaults to meters)",
+    ] = None,
+    title_contains: Annotated[
+        str | None, "Pre-filter by activity title (case-insensitive substring match)"
+    ] = None,
+    is_race: Annotated[
+        bool | None, "Pre-filter by race status (true=races only, false=non-races only)"
+    ] = None,
     unit: Annotated[MeasurementPreference, "Unit preference ('meters' or 'feet')"] = "meters",
     ctx: Context | None = None,
 ) -> str:
@@ -550,13 +588,32 @@ async def find_similar_activities(
         # Get reference activity
         reference = await client.get_activity(activity_id)
 
-        # Get recent activities with reduced search window
+        # Parse distance filter if provided
+        from ..filters import parse_distance
+
+        distance_min: int | None = None
+        distance_max: int | None = None
+
+        if distance:
+            try:
+                distance_min, distance_max = parse_distance(distance)
+            except ValueError as e:
+                return ResponseBuilder.build_error_response(
+                    str(e),
+                    error_type="validation_error",
+                )
+
+        # Get recent activities with reduced search window and filters
         start = datetime.now() - timedelta(days=search_days)
-        activities = await client.get_all_activities(
+        activities, _ = await client.get_activities(
             after=start,
-            per_page=200,
+            start_page=1,
             max_activities=300,
-            max_api_calls=3,
+            activity_type=activity_type,
+            distance_min=distance_min,
+            distance_max=distance_max,
+            title_contains=title_contains,
+            is_race=is_race,
         )
 
         # Filter out reference activity

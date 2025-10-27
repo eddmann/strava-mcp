@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A Model Context Protocol (MCP) server that enables LLMs to interact with the Strava API. Built with Python 3.11+ using FastMCP framework. Provides 11 tools organized into 5 categories (Activities, Athlete, Segments, Routes, Analysis), plus 1 MCP resource and 5 MCP prompts.
+A Model Context Protocol (MCP) server that enables LLMs to interact with the Strava API. Built with Python 3.11+ using FastMCP framework. Provides 11 tools organized into 5 categories (Activities, Athlete, Segments, Routes, Analysis), plus 1 MCP resource and 6 MCP prompts.
 
 **Dual-Mode Support**: The server supports both stdio (Claude Desktop) and HTTP (ChatGPT, Lambda) transports with unified client implementation.
 
@@ -63,6 +63,7 @@ uv run pyright
 - Tools are registered by importing functions from `tools/` modules and wrapping them with `@mcp.tool()` decorator
 - MCP resources defined with `@mcp.resource()` decorator (provides ongoing context without explicit tool calls)
 - MCP prompts defined with `@mcp.prompt()` decorator (templates for common queries)
+  - Includes `race_performance_analysis` prompt for analyzing race performance by distance
 - `main()` function parses CLI arguments and runs server with selected transport
 
 **client.py** - Strava API client (transport-agnostic)
@@ -73,6 +74,10 @@ uv run pyright
 - Comprehensive error handling with custom `StravaAPIError` exception
 - Methods organized by API category: activities, athlete, segments, routes
 - All API responses validated using Pydantic models
+- **Unified `get_activities()` method** replaces three separate methods with comprehensive client-side filtering:
+  - Supports filtering by: `activity_type`, `distance_min`, `distance_max`, `title_contains`, `is_race`
+  - Returns tuple `(activities, is_exhausted)` to indicate if more data is available from Strava
+  - Implements safety limits: 5 API calls with filters, 10 without (prevents excessive requests during pagination)
 
 **stdio_middleware.py** - Stdio mode request middleware
 - **StdioClientMiddleware**: Loads config from `.env`, creates and injects `StravaClient` per request
@@ -100,6 +105,16 @@ uv run pyright
 - `StravaOAuthService` handles two-hop OAuth flow (MCP → Strava)
 - `SessionStore` manages per-user sessions (in-memory or DynamoDB)
 - Tokens stored in session store, refreshed on demand
+
+**filters.py** - Client-side activity filtering utilities
+- **Distance parsing** with flexible formats:
+  - Race distance names with ±10% tolerance: `"5k"`, `"10k"`, `"half-marathon"`, `"marathon"`, `"ultra"`
+  - Numeric values with units and ±10% buffer: `"10km"`, `"5mi"`, `"10000"` (defaults to meters)
+  - Exact ranges: `"5km:10km"`, `"3mi:6mi"`, `":10km"` (open-ended min), `"5mi:"` (open-ended max)
+  - Supports units: km, mi, m (case-insensitive)
+- **Title filtering**: Case-insensitive substring search in activity names
+- **Race detection**: Identifies races by workout_type (Run races=1, Ride races=11)
+- **Unified filtering**: `apply_filters()` applies all filters with AND logic
 
 **models.py** - Pydantic models
 - Complete type definitions for all Strava API responses
@@ -136,10 +151,16 @@ uv run pyright
 Tools are organized into 5 modules under `src/strava_mcp/tools/`:
 
 1. **activities.py** - Query activities with optional enrichment (streams, laps, zones), get social data
+   - **New filtering parameters**: `distance`, `title_contains`, `is_race`
+   - Distance filter supports race names (`"marathon"`), units (`"10km"`), and ranges (`"5km:10km"`)
+   - Cursor validation prevents filter changes mid-pagination
+   - Deep pagination protection (max 10 pages with filters to prevent excessive API usage)
 2. **athlete.py** - Get athlete profile with optional stats and training zones
 3. **segments.py** - Query segments (by ID, starred, or explore), star/unstar, get leaderboard
 4. **routes.py** - List routes, get route details, export to GPX/TCX
 5. **analysis.py** - Training analysis, activity comparison, similarity search
+   - **New filtering parameters**: `distance`, `title_contains`, `is_race` added to `analyze_training` and `find_similar_activities`
+   - Enables focused analysis (e.g., analyze only marathon races, or only tempo runs)
 
 All tools follow a consistent pattern:
 - Accept parameters with `Annotated[type, "description"]` for MCP schema generation
@@ -153,13 +174,14 @@ All tools follow a consistent pattern:
 
 **Test fixtures** (`tests/fixtures/`) - Reusable test data for activities, athletes, routes, segments
 **Test stubs** (`tests/stubs/`) - Mock Strava API responses using `respx` library
-**Test organization** - One test file per tool module (e.g., `test_activity_tools.py`)
+**Test organization** - One test file per tool module (e.g., `test_activity_tools.py`, `test_filters.py`)
 **Async testing** - Uses `pytest-asyncio` with `asyncio_mode = "auto"` (configured in pyproject.toml)
 
 When adding tests:
 - Use fixtures from `tests/fixtures/` to create realistic test data
 - Mock HTTP responses with `respx` in `tests/stubs/strava_api_stub.py`
 - Follow naming convention: `test_<function_name>_<scenario>`
+- `test_filters.py` provides comprehensive test coverage for all filtering utilities
 
 ### OAuth Flow (Stdio Mode)
 
@@ -201,6 +223,76 @@ When adding tests:
 **Automatic token refresh** - Client handles token refresh transparently without exposing OAuth details to tools
 
 **Type safety** - Comprehensive Pydantic models for all API responses ensure type safety throughout the codebase
+
+**Client-side filtering** - Unified filtering layer (`filters.py`) enables rich query capabilities not supported by Strava API:
+- Distance filtering with race names, units, and ranges
+- Title substring search
+- Race detection based on workout_type
+- All filters applied with AND logic for precise queries
+
+## Activity Filtering
+
+The server provides comprehensive client-side filtering capabilities for activities through the `filters.py` module. These filters extend beyond what the Strava API natively supports.
+
+### Supported Filters
+
+#### Distance Filtering
+
+Distance filtering supports three input formats:
+
+1. **Race distance names** (with ±10% tolerance):
+   - `"5k"` → 4,500-5,500m
+   - `"10k"` → 9,000-11,000m
+   - `"15k"` → 13,500-16,500m
+   - `"half-marathon"`, `"half marathon"`, `"half"` → 20,000-22,000m
+   - `"marathon"` → 41,000-43,000m
+   - `"ultra"` → 43,000m+ (no upper limit)
+   - `"50k"` → 45,000-55,000m
+   - `"100k"` → 90,000-110,000m
+
+2. **Numeric values with units** (with ±10% buffer):
+   - `"10km"` → 9,000-11,000m
+   - `"5mi"` → 7,239-8,851m
+   - `"10000"` → 9,000-11,000m (defaults to meters)
+   - Supports: km, mi, m (case-insensitive)
+
+3. **Exact ranges** (no buffer):
+   - `"5km:10km"` → 5,000-10,000m
+   - `"3mi:6mi"` → 4,828-9,656m
+   - `":10km"` → 0-10,000m (open-ended minimum)
+   - `"5mi:"` → 8,047m+ (open-ended maximum)
+
+#### Title Filtering
+
+- Case-insensitive substring search in activity names
+- Example: `title_contains="tempo"` matches "Tempo Run", "TEMPO", "tempo workout"
+
+#### Race Filtering
+
+- Detects races based on Strava's `workout_type` field:
+  - Run races: `workout_type == 1`
+  - Ride races: `workout_type == 11`
+- `is_race=true` returns only races
+- `is_race=false` returns only non-races (training activities)
+- Activity types without race detection (e.g., Swim, Walk) are only included in non-race results
+
+### Filter Integration
+
+Filters are available in three tools:
+
+1. **`query_activities`**: Filter activity lists by distance, title, and race status
+2. **`analyze_training`**: Analyze only activities matching specified filters
+3. **`find_similar_activities`**: Pre-filter candidate activities before similarity matching
+
+All filters use AND logic (activities must match all specified criteria).
+
+### Implementation Notes
+
+- **Client-side filtering**: Strava API doesn't support most of these filters natively, so they're applied after fetching activities
+- **Safety limits**: API call limits are reduced when using filters (5 calls vs 10) to prevent excessive requests during pagination
+- **Pagination with filters**: Each paginated request re-fetches from the beginning to ensure correct filtering across pages (less efficient but correct)
+- **Deep pagination protection**: Maximum 10 pages when using filters to prevent performance issues
+- **Cursor validation**: Prevents filter changes mid-pagination to avoid inconsistent results
 
 ## Pagination
 

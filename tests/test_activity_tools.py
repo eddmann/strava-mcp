@@ -348,24 +348,39 @@ class TestActivityPagination:
 
         from strava_mcp.pagination import encode_cursor
 
-        # Simulate second page having fewer items
+        # Simulate a dataset with 15 total activities across 2 Strava pages
+        # Page 1: activities 0-9, Page 2: activities 10-14
         now = datetime.now(UTC)
+        activities_page1 = [
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 1000 + i,
+                "name": f"Activity {i}",
+                "start_date_local": now.isoformat(),
+            }
+            for i in range(10)
+        ]
         activities_page2 = [
             {
                 **SUMMARY_ACTIVITY,
                 "id": 2000 + i,
-                "name": f"Activity {i}",
+                "name": f"Activity {10 + i}",
                 "start_date_local": now.isoformat(),
             }
             for i in range(5)
         ]
 
         def activities_response(request):
-            return Response(200, json=activities_page2)
+            page = request.url.params.get("page", "1")
+            if page == "1":
+                return Response(200, json=activities_page1)
+            elif page == "2":
+                return Response(200, json=activities_page2)
+            return Response(200, json=[])
 
         respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
 
-        # Create cursor for page 2
+        # Create cursor for page 2 (which means we want activities 10-19)
         cursor = encode_cursor(2, {"time_range": "90d"})
 
         async with Client(mcp) as client:
@@ -376,10 +391,12 @@ class TestActivityPagination:
             assert result.is_error is False
             data = json.loads(get_text_content(result))
 
+        # Should return remaining 5 activities (items 10-14)
+        assert data["pagination"]["returned"] == 5
+        assert len(data["data"]["activities"]) == 5
         # Should not have more pages
         assert data["pagination"]["has_more"] is False
         assert data["pagination"]["cursor"] is None
-        assert data["pagination"]["returned"] == 5
 
     async def test_query_activities_pagination_invalid_cursor(self, mcp):
         """Test invalid cursor returns error."""
@@ -560,3 +577,304 @@ class TestActivityPagination:
         assert data["pagination"]["cursor"] is not None
         assert data["pagination"]["limit"] == 10
         assert data["pagination"]["returned"] == 10
+
+
+class TestActivityFiltering:
+    """Test new activity filtering features."""
+
+    async def test_query_activities_with_distance_filter_race_name(self, stub_api, respx_mock, mcp):
+        """Test filtering activities by race distance name (e.g., '10k')."""
+        from datetime import datetime
+
+        from httpx import Response
+
+        # Create mix of distances
+        now = datetime.now(UTC)
+        activities = [
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 1,
+                "distance": 5000,
+                "start_date_local": now.isoformat(),
+            },  # 5k
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 2,
+                "distance": 10000,
+                "start_date_local": now.isoformat(),
+            },  # 10k (match)
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 3,
+                "distance": 10500,
+                "start_date_local": now.isoformat(),
+            },  # 10k (match)
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 4,
+                "distance": 15000,
+                "start_date_local": now.isoformat(),
+            },  # 15k
+        ]
+
+        def activities_response(request):
+            page = request.url.params.get("page", "1")
+            if page == "1":
+                return Response(200, json=activities)
+            return Response(200, json=[])
+
+        respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
+
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_activities", {"time_range": "30d", "distance": "10k"}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
+
+        # Should only return 10k activities (9000-11000m)
+        assert len(data["data"]["activities"]) == 2
+        assert data["data"]["activities"][0]["id"] == 2
+        assert data["data"]["activities"][1]["id"] == 3
+
+        # Check metadata includes filter info
+        assert "distance_filter" in data["metadata"]
+        assert data["metadata"]["distance_filter"] == "10k"
+        assert data["metadata"]["distance_range"]["min"] == 9000
+        assert data["metadata"]["distance_range"]["max"] == 11000
+
+    async def test_query_activities_with_title_filter(self, stub_api, respx_mock, mcp):
+        """Test filtering activities by title substring."""
+        from datetime import datetime
+
+        from httpx import Response
+
+        now = datetime.now(UTC)
+        activities = [
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 1,
+                "name": "Morning Parkrun",
+                "start_date_local": now.isoformat(),
+            },
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 2,
+                "name": "Evening PARKRUN",
+                "start_date_local": now.isoformat(),
+            },
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 3,
+                "name": "Tempo Run",
+                "start_date_local": now.isoformat(),
+            },
+        ]
+
+        def activities_response(request):
+            page = request.url.params.get("page", "1")
+            if page == "1":
+                return Response(200, json=activities)
+            return Response(200, json=[])
+
+        respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
+
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_activities", {"time_range": "30d", "title_contains": "parkrun"}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
+
+        # Should return both parkrun activities (case-insensitive)
+        assert len(data["data"]["activities"]) == 2
+        assert data["data"]["activities"][0]["id"] == 1
+        assert data["data"]["activities"][1]["id"] == 2
+
+        # Check metadata
+        assert data["metadata"]["title_filter"] == "parkrun"
+
+    async def test_query_activities_with_race_filter(self, stub_api, respx_mock, mcp):
+        """Test filtering activities by race status."""
+        from datetime import datetime
+
+        from httpx import Response
+
+        now = datetime.now(UTC)
+        activities = [
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 1,
+                "type": "Run",
+                "workout_type": 1,
+                "start_date_local": now.isoformat(),
+            },  # Race
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 2,
+                "type": "Run",
+                "workout_type": 0,
+                "start_date_local": now.isoformat(),
+            },  # Not race
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 3,
+                "type": "Run",
+                "workout_type": 1,
+                "start_date_local": now.isoformat(),
+            },  # Race
+        ]
+
+        def activities_response(request):
+            page = request.url.params.get("page", "1")
+            if page == "1":
+                return Response(200, json=activities)
+            return Response(200, json=[])
+
+        respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
+
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_activities", {"time_range": "30d", "is_race": True}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
+
+        # Should return only race activities
+        assert len(data["data"]["activities"]) == 2
+        assert data["data"]["activities"][0]["id"] == 1
+        assert data["data"]["activities"][1]["id"] == 3
+
+        # Check metadata
+        assert data["metadata"]["race_filter"] is True
+
+    async def test_query_activities_with_multiple_filters(self, stub_api, respx_mock, mcp):
+        """Test combining multiple filters (AND logic)."""
+        from datetime import datetime
+
+        from httpx import Response
+
+        now = datetime.now(UTC)
+        activities = [
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 1,
+                "name": "Parkrun Race",
+                "type": "Run",
+                "distance": 5000,
+                "workout_type": 1,
+                "start_date_local": now.isoformat(),
+            },  # Match all
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 2,
+                "name": "Morning Parkrun",
+                "type": "Run",
+                "distance": 5000,
+                "workout_type": 0,
+                "start_date_local": now.isoformat(),
+            },  # Not race
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 3,
+                "name": "Parkrun Race",
+                "type": "Ride",
+                "distance": 5000,
+                "workout_type": 11,
+                "start_date_local": now.isoformat(),
+            },  # Wrong type
+        ]
+
+        def activities_response(request):
+            page = request.url.params.get("page", "1")
+            if page == "1":
+                return Response(200, json=activities)
+            return Response(200, json=[])
+
+        respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
+
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_activities",
+                {
+                    "time_range": "30d",
+                    "activity_type": "Run",
+                    "distance": "5k",
+                    "title_contains": "parkrun",
+                    "is_race": True,
+                },
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
+
+        # Should return only activity matching all filters
+        assert len(data["data"]["activities"]) == 1
+        assert data["data"]["activities"][0]["id"] == 1
+
+    async def test_query_activities_invalid_distance_format(self, mcp):
+        """Test invalid distance format returns error."""
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "query_activities", {"time_range": "30d", "distance": "invalid"}
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
+
+        assert "error" in data
+        assert data["error"]["type"] == "validation_error"
+        assert "distance" in data["error"]["message"].lower()
+
+    async def test_query_activities_pagination_with_filters(self, stub_api, respx_mock, mcp):
+        """Test that filters are preserved across paginated requests."""
+        from datetime import datetime
+
+        from httpx import Response
+
+        from strava_mcp.pagination import decode_cursor
+
+        # First page: Create 15 5k races
+        now = datetime.now(UTC)
+        activities_page1 = [
+            {
+                **SUMMARY_ACTIVITY,
+                "id": 100 + i,
+                "distance": 5000,
+                "type": "Run",
+                "workout_type": 1,
+                "start_date_local": now.isoformat(),
+            }
+            for i in range(15)
+        ]
+
+        def activities_response(request):
+            page = request.url.params.get("page", "1")
+            if page == "1":
+                return Response(200, json=activities_page1)
+            return Response(200, json=[])
+
+        respx_mock.get("/athlete/activities").mock(side_effect=activities_response)
+
+        async with Client(mcp) as client:
+            # Request first page with filters
+            result = await client.call_tool(
+                "query_activities",
+                {"time_range": "30d", "distance": "5k", "is_race": True, "limit": 10},
+            )
+
+            assert result.is_error is False
+            data = json.loads(get_text_content(result))
+
+        # Should have pagination
+        assert data["pagination"]["has_more"] is True
+        assert data["pagination"]["cursor"] is not None
+
+        # Verify cursor preserves filters
+        cursor_data = decode_cursor(data["pagination"]["cursor"])
+        assert "filters" in cursor_data
+        assert cursor_data["filters"]["distance"] == "5k"
+        assert cursor_data["filters"]["is_race"] is True

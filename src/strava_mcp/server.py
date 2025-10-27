@@ -306,6 +306,34 @@ Include:
 
 Make the summary actionable and easy to understand."""
 
+    @mcp.prompt()
+    async def race_performance_analysis(  # type: ignore[reportUnusedFunction]
+        race_distance: str = "10k", time_range: str = "ytd"
+    ) -> str:
+        """Analyze my race performance for a specific distance.
+
+        Args:
+            race_distance: Race distance ("5k", "10k", "half-marathon", "marathon", "ultra")
+            time_range: Time period to analyze ("ytd", "90d", "this-year", "30d")
+        """
+        return f"""Analyze my {race_distance} race performance over {time_range}.
+
+Use the analyze_training tool with:
+- distance="{race_distance}"
+- is_race=true
+- period="{time_range}"
+
+Then provide insights on:
+1. Total races completed at this distance
+2. Performance trends over time (are times improving?)
+3. Best and worst performances with dates
+4. Consistency analysis (variance in pace/time)
+5. Training recommendations for improvement
+6. Comparison to similar distance training runs (non-races)
+
+Present the analysis in a clear, actionable format that helps me understand
+my race performance and identify areas for improvement."""
+
     return mcp
 
 
