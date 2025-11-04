@@ -1,5 +1,7 @@
 # Strava MCP Server
 
+![Strava MCP Server](docs/heading.png)
+
 A Model Context Protocol (MCP) server for Strava integration. Access your activities, athlete stats, segments, and routes through Claude, ChatGPT, and other LLMs.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
