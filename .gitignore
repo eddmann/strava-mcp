@@ -34,14 +34,6 @@ ENV/
 .env.local
 .env.*.local
 
-# Secrets and credentials
-*.pem
-*.key
-*.p12
-*.pfx
-credentials.json
-service-account*.json
-
 # Strava tokens
 .strava_tokens/
 
