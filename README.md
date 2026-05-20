@@ -269,12 +269,12 @@ Ask Claude to interact with your Strava data using natural language. The server 
 
 Use built-in prompt templates for common queries (available via prompt suggestions in Claude):
 
-- `analyze-recent-training` - Analyze my training over the past 30 days
-- `segment-performance` - Analyze my performance on a specific segment
-- `activity-deep-dive` - Deep dive into a specific activity
-- `compare-recent-runs` - Compare my recent runs to track progress
-- `training-summary` - Show me a comprehensive training summary
-- `race-performance-analysis` - Analyze race performance for a specific distance
+- `analyze_recent_training` - Analyze my training over the past 30 days
+- `segment_performance` - Analyze my performance on a specific segment
+- `activity_deep_dive` - Deep dive into a specific activity
+- `compare_recent_runs` - Compare my recent runs to track progress
+- `training_summary` - Show me a comprehensive training summary
+- `race_performance_analysis` - Analyze race performance for a specific distance
 
 ### Activities
 
@@ -327,37 +327,37 @@ _Note: List-returning tools use cursor-based pagination with default limits (10 
 
 | Tool                  | Description                                                                                                               |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `query-activities`    | Unified query for activities with filtering (distance, title, race status) and optional enrichment (laps, zones, streams) |
-| `get-activity-social` | Get comments and kudos for an activity                                                                                    |
+| `query_activities`    | Unified query for activities with filtering (distance, title, race status) and optional enrichment (laps, zones, streams) |
+| `get_activity_social` | Get comments and kudos for an activity                                                                                    |
 
 ### Athlete (1 tool)
 
 | Tool                  | Description                                                                             |
 | --------------------- | --------------------------------------------------------------------------------------- |
-| `get-athlete-profile` | Get athlete profile with optional statistics (recent, YTD, all-time) and training zones |
+| `get_athlete_profile` | Get athlete profile with optional statistics (recent, YTD, all-time) and training zones |
 
 ### Segments (3 tools)
 
 | Tool                      | Description                                                             |
 | ------------------------- | ----------------------------------------------------------------------- |
-| `query-segments`          | Unified segment query (by ID, starred, or explore by geographic bounds) |
-| `star-segment`            | Star or unstar a segment                                                |
-| `get-segment-leaderboard` | Get segment leaderboard with filtering options                          |
+| `query_segments`          | Unified segment query (by ID, starred, or explore by geographic bounds) |
+| `star_segment`            | Star or unstar a segment                                                |
+| `get_segment_leaderboard` | Get segment leaderboard with filtering options                          |
 
 ### Routes (2 tools)
 
 | Tool           | Description                                               |
 | -------------- | --------------------------------------------------------- |
-| `query-routes` | Get route details (single route by ID or list all routes) |
-| `export-route` | Export a route to GPX or TCX format                       |
+| `query_routes` | Get route details (single route by ID or list all routes) |
+| `export_route` | Export a route to GPX or TCX format                       |
 
 ### Analysis (3 tools)
 
 | Tool                      | Description                                                                                              |
 | ------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `analyze-training`        | Analyze training over a time period with filtering (distance, title, race status) and aggregated metrics |
-| `compare-activities`      | Compare 2-5 activities side-by-side                                                                      |
-| `find-similar-activities` | Find activities similar to a reference activity with pre-filtering options for progress tracking         |
+| `analyze_training`        | Analyze training over a time period with filtering (distance, title, race status) and aggregated metrics |
+| `compare_activities`      | Compare 2-5 activities side-by-side                                                                      |
+| `find_similar_activities` | Find activities similar to a reference activity with pre-filtering options for progress tracking         |
 
 ## MCP Resources
 
@@ -373,12 +373,12 @@ Prompt templates for common queries (accessible via prompt suggestion in Claude)
 
 | Prompt                      | Description                                             |
 | --------------------------- | ------------------------------------------------------- |
-| `analyze-recent-training`   | Comprehensive training analysis over a specified period |
-| `race-performance-analysis` | Analyze race performance for a specific distance        |
-| `segment-performance`       | Detailed segment performance analysis                   |
-| `activity-deep-dive`        | Deep dive into a specific activity with all metrics     |
-| `compare-recent-runs`       | Compare recent runs to identify trends and improvements |
-| `training-summary`          | Comprehensive training overview with recommendations    |
+| `analyze_recent_training`   | Comprehensive training analysis over a specified period |
+| `race_performance_analysis` | Analyze race performance for a specific distance        |
+| `segment_performance`       | Detailed segment performance analysis                   |
+| `activity_deep_dive`        | Deep dive into a specific activity with all metrics     |
+| `compare_recent_runs`       | Compare recent runs to identify trends and improvements |
+| `training_summary`          | Comprehensive training overview with recommendations    |
 
 ## License
 
