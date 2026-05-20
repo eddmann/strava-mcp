@@ -1,4 +1,4 @@
-"""Middleware for stdio mode - .env-based authentication."""
+"""Middleware for stdio mode - env-file-based authentication."""
 
 from collections.abc import Callable
 from typing import Any

@@ -1,9 +1,8 @@
-"""Stdio mode authentication - .env-based single-user credentials."""
+"""Stdio mode authentication - env-file-based single-user credentials."""
 
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from typing import Literal
 
 import httpx
@@ -11,20 +10,21 @@ from dotenv import set_key
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .env import get_env_file_path, get_env_files
 from .models import TokenResponse
 
 
 class StdioStravaAuthContext(BaseSettings):
-    """Stdio mode: Strava API configuration from .env file.
+    """Stdio mode: Strava API configuration from env files.
 
     Single-user authentication where tokens are stored in and loaded from
-    the .env file. Token refresh updates the .env file automatically.
+    the selected env file. Token refresh updates that env file automatically.
 
     Implements StravaAuthContext protocol for compatibility with StravaClient.
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
+        env_file=get_env_files(), env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
 
     strava_client_id: str = ""
@@ -40,31 +40,31 @@ class StdioStravaAuthContext(BaseSettings):
         if not self.strava_client_id or self.strava_client_id == "your_client_id_here":
             raise ValueError(
                 "Strava client ID not configured. "
-                "Please run 'strava-mcp-auth' to set up authentication."
+                "Please run 'strava-mcp auth' to set up authentication."
             )
         if not self.strava_client_secret or self.strava_client_secret == "your_client_secret_here":
             raise ValueError(
                 "Strava client secret not configured. "
-                "Please run 'strava-mcp-auth' to set up authentication."
+                "Please run 'strava-mcp auth' to set up authentication."
             )
         if not self.strava_access_token or self.strava_access_token == "your_access_token_here":
             raise ValueError(
                 "Strava access token not configured. "
-                "Please run 'strava-mcp-auth' to set up authentication."
+                "Please run 'strava-mcp auth' to set up authentication."
             )
         if not self.strava_refresh_token or self.strava_refresh_token == "your_refresh_token_here":
             raise ValueError(
                 "Strava refresh token not configured. "
-                "Please run 'strava-mcp-auth' to set up authentication."
+                "Please run 'strava-mcp auth' to set up authentication."
             )
         return self
 
     async def refresh_tokens(self) -> None:
-        """Refresh Strava access token and update .env file.
+        """Refresh Strava access token and update the selected env file.
 
         This is the stdio-specific refresh strategy:
         1. Call Strava token endpoint with refresh_token
-        2. Update .env file with new tokens
+        2. Update selected env file with new tokens
         3. Update this instance with new tokens
         """
         async with httpx.AsyncClient() as client:
@@ -80,7 +80,7 @@ class StdioStravaAuthContext(BaseSettings):
             response.raise_for_status()
             token_data = TokenResponse(**response.json())
 
-            # Update .env file
+            # Update the selected env file.
             _update_env_tokens(token_data.access_token, token_data.refresh_token)
 
             # Update this instance
@@ -89,19 +89,17 @@ class StdioStravaAuthContext(BaseSettings):
 
 
 def _update_env_tokens(access_token: str, refresh_token: str) -> None:
-    """Update the .env file with new tokens.
+    """Update the selected env file with new tokens.
 
     Args:
         access_token: New access token
         refresh_token: New refresh token
     """
-    env_path = Path.cwd() / ".env"
+    env_path = get_env_file_path()
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.touch(exist_ok=True)
 
-    if not env_path.exists():
-        # Create .env if it doesn't exist
-        env_path.touch()
-
-    # Update tokens in .env file
+    # Update tokens in the selected env file.
     set_key(str(env_path), "STRAVA_ACCESS_TOKEN", access_token)
     set_key(str(env_path), "STRAVA_REFRESH_TOKEN", refresh_token)
 

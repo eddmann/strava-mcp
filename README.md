@@ -5,6 +5,8 @@
 A Model Context Protocol (MCP) server for Strava integration. Access your activities, athlete stats, segments, and routes through Claude, ChatGPT, and other LLMs.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/mcp-strava.svg)](https://pypi.org/project/mcp-strava/)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io-blue.svg)](https://github.com/eddmann/strava-mcp/pkgs/container/strava-mcp)
 
 ## Overview
 
@@ -19,7 +21,7 @@ This MCP server provides 11 tools to interact with your Strava account, organize
 Additionally, the server provides:
 
 - 1 MCP Resource - Athlete profile with stats and zones for ongoing context
-- 5 MCP Prompts - Templates for common queries (training analysis, segment performance, activity analysis, run comparison, training summary)
+- 6 MCP Prompts - Templates for common queries (training analysis, segment performance, activity analysis, run comparison, training summary, race performance)
 
 **Deployment Options:**
 
@@ -28,7 +30,7 @@ Additionally, the server provides:
 
 ## Prerequisites
 
-- Python 3.11+ and [uv](https://github.com/astral-sh/uv), OR
+- [uv](https://github.com/astral-sh/uv) (the package requires Python 3.11+, which uv can manage), OR
 - Docker
 
 ## Strava API Application Setup
@@ -52,7 +54,7 @@ Before installation, you need to create a Strava API application:
 #### Stdio Mode (single-user, pre-configured)
 
 1. OAuth Flow - One-time authorization through browser
-2. Token Storage - OAuth tokens saved to `.env` file
+2. Token Storage - OAuth tokens saved to `~/.strava-mcp.env` by default, or a local `.env` file when one exists
 3. Auto-Refresh - Tokens automatically refreshed when expired
 4. Persistence - Subsequent runs reuse stored tokens
 
@@ -63,21 +65,19 @@ Before installation, you need to create a Strava API application:
 3. Auto-Refresh - Tokens refreshed automatically per-session
 4. Persistence - Sessions expire after 12 hours (configurable)
 
-### Option 1: Using UV
+### Option 1: Using uvx
 
 ```bash
-# Install dependencies
-cd strava-mcp
-uv sync
+uvx mcp-strava auth
 ```
 
-Then configure credentials:
+This interactive wizard will guide you through configuring authentication for stdio or
+http transport modes. It writes configuration to `~/.strava-mcp.env` by default.
 
-```bash
-uv run strava-mcp-auth
-```
+If you prefer source checkout development, see "Using Local Source" below.
 
-This interactive wizard will guide you through configuring authentication for stdio or http transport modes.
+For manual stdio configuration, create `~/.strava-mcp.env` with your Strava OAuth app
+credentials and tokens.
 
 ### Option 2: Using Docker
 
@@ -95,9 +95,8 @@ touch strava-mcp.env
 # Run the setup script
 docker run -it --rm \
   -v "/ABSOLUTE/PATH/TO/strava-mcp.env:/app/.env" \
-  --entrypoint= \
   ghcr.io/eddmann/strava-mcp:latest \
-  python -m strava_mcp.scripts.setup_auth
+  auth
 ```
 
 This interactive wizard will guide you through configuring authentication for stdio or http transport modes.
@@ -119,10 +118,10 @@ The server supports two transport modes selected via `--transport` flag (stdio i
 
 Uses standard input/output for communication with a single pre-configured Strava account.
 
-- Authentication: Pre-configured OAuth tokens in `.env` file
+- Authentication: Pre-configured OAuth tokens in `~/.strava-mcp.env` or a local `.env` file
 - Users: Single user per deployment
-- Setup: Run `strava-mcp-auth` to authorize once
-- Token Storage: Local `.env` file
+- Setup: Run `strava-mcp auth` to authorize once
+- Token Storage: `~/.strava-mcp.env` by default, with local `.env` overrides for development and Docker
 
 ### HTTP Mode (Streamable HTTP)
 
@@ -140,7 +139,31 @@ Add to your configuration file:
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
-### Using UV
+### Using uvx
+
+After running `uvx mcp-strava auth`, configure Claude Desktop to start the published
+package:
+
+```json
+{
+  "mcpServers": {
+    "strava": {
+      "command": "uvx",
+      "args": ["mcp-strava"]
+    }
+  }
+}
+```
+
+### Using Local Source
+
+For development, run from a local checkout:
+
+```bash
+cd strava-mcp
+make deps
+uv run strava-mcp auth
+```
 
 ```json
 {
@@ -186,11 +209,16 @@ Add to your configuration file:
 
 ### Running in HTTP Mode
 
-Start the server in HTTP mode for deploying remote:
+Start the server in HTTP mode for remote deployments:
 
 ```bash
-# Using UV
-uv run --directory /ABSOLUTE/PATH/TO/strava-mcp strava-mcp --transport http
+# Using uvx
+uvx --from "mcp-strava[http]" mcp-strava --transport http
+
+# Using local source
+cd /ABSOLUTE/PATH/TO/strava-mcp
+make deps
+uv run strava-mcp --transport http
 
 # Using Docker
 docker run -p 8000:8000 --rm \
@@ -199,7 +227,7 @@ docker run -p 8000:8000 --rm \
   --transport http
 ```
 
-Environment variables can be configured using the `strava-mcp-auth` setup wizard (see Installation & Setup above).
+Environment variables can be configured using `uvx mcp-strava auth`, or `strava-mcp auth` from a local checkout or Docker image.
 
 ### Local Development with ngrok
 
@@ -246,6 +274,7 @@ Use built-in prompt templates for common queries (available via prompt suggestio
 - `activity-deep-dive` - Deep dive into a specific activity
 - `compare-recent-runs` - Compare my recent runs to track progress
 - `training-summary` - Show me a comprehensive training summary
+- `race-performance-analysis` - Analyze race performance for a specific distance
 
 ### Activities
 

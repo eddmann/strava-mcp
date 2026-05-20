@@ -47,4 +47,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import strava_mcp; print('ok')" || exit 1
 
 # Run the MCP server
-ENTRYPOINT ["python", "-m", "strava_mcp.server"]
+ENTRYPOINT ["strava-mcp"]

@@ -6,8 +6,11 @@ import os
 from dotenv import load_dotenv
 from fastmcp import Context, FastMCP
 
+from .env import DEFAULT_ENV_FILE, LOCAL_ENV_FILE
+
 # Load environment variables
-load_dotenv()
+load_dotenv(DEFAULT_ENV_FILE)
+load_dotenv(LOCAL_ENV_FILE, override=True)
 
 
 def create_server(transport_mode: str = "stdio") -> FastMCP:
@@ -67,7 +70,7 @@ def create_server(transport_mode: str = "stdio") -> FastMCP:
         mcp.add_middleware(HttpClientMiddleware(app_config, session_store, oauth_service))
 
     else:
-        # Stdio mode: Traditional .env-based single-user authentication
+        # Stdio mode: env-file-based single-user authentication
         from .stdio_auth import StdioStravaAuthContext
         from .stdio_middleware import StdioClientMiddleware
 

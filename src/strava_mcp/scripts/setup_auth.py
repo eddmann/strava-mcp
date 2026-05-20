@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 from dotenv import dotenv_values, set_key
 
+from ..env import get_env_file_path
 from ..models import TokenResponse
 
 DEFAULT_SCOPES = "profile:read_all,activity:read_all,activity:read,profile:write"
@@ -25,7 +26,7 @@ def main() -> None:
     print("=" * 60)
     print()
     print("This wizard helps configure environment variables for stdio or http transport.")
-    print("It will copy .env.example to .env (if needed) and update the relevant settings.")
+    print("It writes to an existing local .env file, or ~/.strava-mcp.env by default.")
     print()
 
     modes = _prompt_modes()
@@ -58,7 +59,7 @@ def main() -> None:
     print("=" * 60)
     print("Configuration complete!")
     selected = " & ".join(sorted(modes))
-    print(f"Updated .env for transport mode(s): {selected}")
+    print(f"Updated {env_path} for transport mode(s): {selected}")
     print("=" * 60)
 
 
@@ -126,18 +127,19 @@ def _prompt_optional(prompt_text: str, default: str | None = None) -> str | None
 
 
 def _ensure_env_file() -> Path:
-    """Ensure .env exists, copying from .env.example if available."""
-    env_path = Path.cwd() / ".env"
+    """Ensure the selected env file exists, copying from .env.example if available."""
+    env_path = get_env_file_path()
     example_path = Path.cwd() / ".env.example"
     if env_path.exists():
         return env_path
 
+    env_path.parent.mkdir(parents=True, exist_ok=True)
     if example_path.exists():
         shutil.copy(example_path, env_path)
-        print(f"Created {env_path.name} from {example_path.name}")
+        print(f"Created {env_path} from {example_path.name}")
     else:
         env_path.touch()
-        print(f"Created empty {env_path.name} (no .env.example found)")
+        print(f"Created empty {env_path} (no .env.example found)")
     return env_path
 
 
@@ -190,7 +192,7 @@ def _configure_stdio(env_path: Path, client_id: str, client_secret: str) -> None
     set_key(str(env_path), "STRAVA_REFRESH_TOKEN", token_data.refresh_token)
 
     print()
-    print("✓ stdio tokens saved to .env")
+    print(f"✓ stdio tokens saved to {env_path}")
     if token_data.athlete:
         athlete = token_data.athlete
         name = f"{athlete.firstname} {athlete.lastname}".strip()
@@ -281,13 +283,13 @@ def _configure_http(env_path: Path, existing: dict[str, str | None]) -> None:
     )
 
     print()
-    print("✓ HTTP environment values updated.")
-    print("Remember to install HTTP dependencies: pip install '.[http]'")
+    print(f"✓ HTTP environment values updated in {env_path}.")
+    print("When running from source, install HTTP dependencies with: uv sync --extra http")
     print()
 
 
 def _set_keys(env_path: Path, pairs: Iterable[tuple[str, str | None]]) -> None:
-    """Persist non-empty key/value pairs to the .env file."""
+    """Persist non-empty key/value pairs to the selected env file."""
     for key, value in pairs:
         if value is None:
             continue

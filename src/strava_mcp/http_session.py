@@ -28,6 +28,7 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from pydantic import AnyHttpUrl, AnyUrl, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .env import get_env_files
 from .models import TokenResponse
 
 # Type aliases for OAuth provider
@@ -57,7 +58,7 @@ class StravaAppConfig(BaseSettings):
     """Strava API configuration from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
+        env_file=get_env_files(), env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
 
     strava_client_id: str = ""
